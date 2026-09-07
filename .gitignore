@@ -12,8 +12,6 @@
 *.dylib
 *.a
 
-# Dependencies
-Cargo.lock
 
 # IDE
 .vscode/
