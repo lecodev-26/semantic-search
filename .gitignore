@@ -46,3 +46,4 @@ release/
 *.profraw
 *.profdata
 target/cov/
+.semantic-index.json
