@@ -2,16 +2,19 @@
 
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-blue.svg)](https://www.rust-lang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-0.4.0-brightgreen.svg)](https://github.com/lecodev-26/semantic-search/releases)
+[![Version](https://img.shields.io/badge/version-0.5.0-brightgreen.svg)](https://github.com/lecodev-26/semantic-search/releases)
 [![Termux](https://img.shields.io/badge/Termux-compatible-brightgreen.svg)](https://termux.com)
 
-> **Buscador de código por SIGNIFICADO con TF-IDF, caché y búsqueda avanzada.**
+> **Buscador de código por SIGNIFICADO con TF-IDF, caché y búsqueda por nombre de archivo.**
 
 ---
 
 ## ✨ Características
 
-- 🧠 **Búsqueda semántica con TF-IDF** (v0.4.0) - Busca por significado, no por texto exacto
+- 🧠 **Búsqueda semántica con TF-IDF** (v0.4.0) - Busca por significado
+- 📄 **Búsqueda por nombre de archivo** (v0.5.0) - Encuentra archivos por su nombre
+- 🔢 **Contador de ocurrencias** (v0.5.0) - Muestra cuántas coincidencias por archivo
+- 📊 **Resumen de resultados** (v0.5.0) - Archivos, coincidencias y tiempo
 - 💾 **Caché inteligente** - Guarda palabras clave para búsquedas instantáneas
 - 🔍 Búsqueda por texto (grep) con resaltado en color
 - 📁 Filtro por extensiones y carpetas
@@ -45,66 +48,78 @@ cp target/release/semantic-search $PREFIX/bin/
 
 📖 Uso
 
+📄 Buscar por nombre de archivo (v0.5.0)
+
+```bash
+# Buscar archivo exacto
+semantic-search search --file "main.rs" --path .
+
+# Buscar ignorando mayúsculas
+semantic-search search --file "Readme" --ignore-case --path .
+```
+
 🧠 Búsqueda semántica (TF-IDF)
 
 ```bash
-# Indexar el proyecto (genera caché de palabras clave)
+# Indexar primero
 semantic-search index --path .
 
-# Buscar por SIGNIFICADO
+# Buscar por significado
 semantic-search search --query "función principal" --path . --semantic
 
-# Buscar con más detalles
+# Con progreso
 semantic-search search --query "validar email" --path . --semantic --verbose
 ```
 
-🔍 Búsqueda por texto (grep)
+🔍 Búsqueda por texto
 
 ```bash
-# Búsqueda normal
+# Búsqueda normal (con contador de ocurrencias)
 semantic-search search --query "fn main" --path .
+
+# Con resumen al final (activado por defecto)
+semantic-search search --query "error" --path . --verbose
+
+# Desactivar resumen
+semantic-search search --query "error" --path . --no-summary
 
 # Filtros
 semantic-search search --query "Result" --ext rs --path src/
-
-# Buscar exacto
-semantic-search search --query "main" --exact --path .
-
-# Buscar con progreso
-semantic-search search --query "error" --path . --verbose
 ```
 
-📊 Ejemplo de salida (búsqueda semántica)
+📊 Ejemplo de salida
 
 ```
-🧠 Búsqueda SEMÁNTICA (TF-IDF)
-  Query: 'función principal'
-📄 Revisando 45 archivos...
-  Progreso: 45/45
+🔍 Búsqueda por TEXTO
+  Query: 'fn'
+📄 Revisando 10 archivos...
 
-src/main.rs [Similitud: 68.42%]
-  fn main() -> anyhow::Result<()> {
-      let cli = Cli::parse();
-      match cli.command {
+./src/main.rs (7 coincidencias)
+  34: fn main() -> anyhow::Result<()> {
 
-✅ Encontrados 3 archivos.
+📊 Resumen:
+  • Archivos encontrados: 3
+  • Coincidencias totales: 12
+  • Tiempo: 0.00s
 ```
 
 ---
 
 🗺️ Hoja de ruta
-```marckdown
+```text
 Versión Novedades
 v0.1.0 Buscador simple con colores
 v0.2.0 Filtros, ignorar carpetas, búsqueda exacta
 v0.3.0 ✅ Caché - búsquedas instantáneas
 v0.4.0 ✅ Búsqueda semántica con TF-IDF
-v1.0.0 🚀 Estable, publicación en crates.io (próximamente)
+v0.5.0 ✅ Búsqueda por nombre, contador, resumen
+v0.6.0 🚀 Próximamente
+v1.0.0 Estable, publicación en crates.io
 ```
 ---
 
 📁 Extensiones soportadas
-```marckdown
+```text
 · Rust (.rs)
 · Python (.py)
 · JavaScript/TypeScript (.js, .ts)
@@ -113,6 +128,7 @@ v1.0.0 🚀 Estable, publicación en crates.io (próximamente)
 · C/C++ (.c, .cpp, .h)
 · Y más: .toml, .json, .yaml, .md, .sh, .bash, .css, .html, .xml, .sql, .rb, .php, .swift, .kt
 ```
+
 ---
 
 🛠️ Desarrollo
