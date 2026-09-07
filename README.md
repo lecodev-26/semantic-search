@@ -1,25 +1,25 @@
-ls -la | grep Cargo.lock
 # 🔍 semantic-search
 
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-blue.svg)](https://www.rust-lang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
+[![Version](https://img.shields.io/badge/version-0.2.0-brightgreen.svg)](https://github.com/lecodev-26/semantic-search/releases)
 [![Termux](https://img.shields.io/badge/Termux-compatible-brightgreen.svg)](https://termux.com)
 
-> **Buscador de código en terminal con resaltado de sintaxis.**
-> Corre en Termux, Linux, macOS y Windows.
+> **Buscador de código en terminal con búsqueda avanzada, filtros y resaltado.**
 
 ---
 
 ## ✨ Características
 
 - 🔍 Búsqueda rápida en archivos de código
-- 🎨 **Resaltado en color** de la palabra buscada
-- 📊 Muestra **número de línea** exacto
-- 📁 Soporta múltiples extensiones (Rust, Python, JS, Go, Java, C/C++, etc.)
-- ⏱️ Modo **verbose** con barra de progreso
-- 📱 **Compatible con Termux** (móvil)
-- ⚡ Compilado en Rust: rápido y seguro
+- 🎨 Resaltado en color de la palabra buscada
+- 📊 Muestra número de línea exacto
+- 📁 Filtro por extensiones (`--ext rs,py,js`)
+- 🚫 Ignora carpetas automáticamente (`.git`, `target`, `node_modules`)
+- 🎯 Búsqueda exacta (`--exact`)
+- 🔤 Búsqueda ignorando mayúsculas (`--ignore-case`)
+- ⏱️ Modo verbose con barra de progreso
+- 📱 Compatible con Termux
 
 ---
 
@@ -48,15 +48,36 @@ cp target/release/semantic-search $PREFIX/bin/
 
 📖 Uso
 
+Comandos básicos
+
 ```bash
-# Buscar texto en archivos
-semantic-search search --query "fn main" --path src/
+# Buscar texto en todo el proyecto
+semantic-search search --query "fn main" --path .
+
+# Buscar solo en archivos Rust
+semantic-search search --query "Result" --ext rs --path src/
+
+# Buscar ignorando mayúsculas
+semantic-search search --query "hello" --ignore-case --path .
+
+# Búsqueda exacta (palabra completa)
+semantic-search search --query "main" --exact --path .
 
 # Buscar con progreso
-semantic-search search --query "Result" --path src/ --verbose
+semantic-search search --query "error" --path . --verbose
 
-# Mostrar estadísticas
+# Ignorar carpetas personalizadas
+semantic-search search --query "test" --ignore "target,node_modules,dist" --path .
+```
+
+Indexar (estadísticas)
+
+```bash
+# Mostrar estadísticas del proyecto
 semantic-search index --path .
+
+# Ignorar carpetas personalizadas
+semantic-search index --path . --ignore "target,build"
 ```
 
 Ejemplo de salida
@@ -72,41 +93,33 @@ src/main.rs
 
 ---
 
+📁 Extensiones soportadas
+
+· Rust (.rs)
+· Python (.py)
+· JavaScript/TypeScript (.js, .ts)
+· Go (.go)
+· Java (.java)
+· C/C++ (.c, .cpp, .h)
+· Y más: .toml, .json, .yaml, .md, .sh, .bash, .css, .html, .xml, .sql, .rb, .php, .swift, .kt
+
+---
+
 🛠️ Desarrollo
 
 ```bash
 # Clonar
 git clone https://github.com/lecodev-26/semantic-search
 
-# Compilar en desarrollo
+# Compilar
 cargo build
 
 # Compilar optimizado
 cargo build --release
 
-# Ejecutar
-cargo run -- search --query "texto" --path .
+# Ejecutar tests
+cargo test
 ```
-
----
-
-📁 Estructura
-
-```
-semantic-search/
-├── Cargo.toml          # Dependencias
-├── Cargo.lock          # Versiones bloqueadas
-├── README.md           # Documentación
-├── .gitignore          # Archivos ignorados
-└── src/
-    └── main.rs         # Código principal (único archivo)
-```
-
----
-
-🧪 Tests (próximamente)
-
-El proyecto está en desarrollo activo. Próximamente se añadirán tests unitarios y de integración.
 
 ---
 
@@ -116,12 +129,14 @@ MIT
 
 ---
 
-⭐ Contribuciones
-
-¡Las contribuciones son bienvenidas! Abre un issue o PR.
-
----
-
 👤 Autor
 
 Manuel (@lecodev-26)
+
+---
+
+⬆ Volver arriba
+
+```
+
+---
