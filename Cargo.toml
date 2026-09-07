@@ -1,12 +1,23 @@
 [package]
 name = "semantic-search"
-version = "0.4.0"
+version = "1.0.0"
 edition = "2021"
 authors = ["Manuel <lecodev-26@github.com>"]
-description = "🔍 Buscador semántico de código con IA local"
+description = "🔍 Buscador semántico de código con IA local y caché"
 license = "MIT"
 repository = "https://github.com/lecodev-26/semantic-search"
+homepage = "https://github.com/lecodev-26/semantic-search"
+documentation = "https://github.com/lecodev-26/semantic-search#readme"
 readme = "README.md"
+keywords = ["search", "semantic", "code", "ai", "cli", "rust"]
+categories = ["command-line-utilities", "development-tools"]
+exclude = [
+    "target/",
+    ".semantic-index.json",
+    "models/*.onnx",
+    "models/*.bin",
+    "*.log"
+]
 
 [dependencies]
 clap = { version = "4.5", features = ["derive", "color"] }
@@ -18,10 +29,6 @@ regex = "1.10"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 chrono = "0.4"
-# Para IA (se añadirá en v0.4.0)
-# candle-core = "0.7"
-# candle-transformers = "0.7"
-# tokenizers = "0.19"
 
 [dev-dependencies]
 assert_cmd = "2.0"
