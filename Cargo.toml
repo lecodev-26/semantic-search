@@ -1,23 +1,11 @@
 [package]
 name = "semantic-search"
-version = "1.0.0"
+version = "0.4.0"
 edition = "2021"
 authors = ["Manuel <lecodev-26@github.com>"]
-description = "🔍 Buscador semántico de código con IA local y caché"
+description = "🔍 Buscador semántico de código con TF-IDF y caché"
 license = "MIT"
 repository = "https://github.com/lecodev-26/semantic-search"
-homepage = "https://github.com/lecodev-26/semantic-search"
-documentation = "https://github.com/lecodev-26/semantic-search#readme"
-readme = "README.md"
-keywords = ["search", "semantic", "code", "ai", "cli", "rust"]
-categories = ["command-line-utilities", "development-tools"]
-exclude = [
-    "target/",
-    ".semantic-index.json",
-    "models/*.onnx",
-    "models/*.bin",
-    "*.log"
-]
 
 [dependencies]
 clap = { version = "4.5", features = ["derive", "color"] }
