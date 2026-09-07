@@ -8,11 +8,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::Instant;
 
 #[derive(Parser)]
 #[command(name = "semantic-search")]
-#[command(version = "0.4.0")]
-#[command(about = "🔍 Buscador semántico de código con TF-IDF")]
+#[command(version = "0.5.0")]
+#[command(about = "🔍 Buscador semántico de código con TF-IDF, caché y búsqueda por nombre")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -20,6 +21,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Indexar archivos y guardar caché
     Index {
         #[arg(short, long)]
         path: String,
@@ -28,27 +30,43 @@ enum Commands {
         #[arg(short, long)]
         force: bool,
     },
+    /// Buscar en archivos
     Search {
         #[arg(short, long)]
-        query: String,
+        query: Option<String>,
+
         #[arg(short, long, default_value = ".")]
         path: String,
+
         #[arg(short = 'e', long, value_name = "EXT")]
         ext: Option<String>,
+
         #[arg(short = 'i', long, default_value = ".git,target,node_modules,dist,build")]
         ignore: String,
+
         #[arg(long)]
         exact: bool,
+
         #[arg(long)]
         ignore_case: bool,
+
         #[arg(short, long)]
         verbose: bool,
+
         #[arg(long)]
         no_cache: bool,
+
         #[arg(long)]
         update: bool,
+
         #[arg(long, default_value_t = false)]
         semantic: bool,
+
+        #[arg(short = 'f', long, value_name = "FILE")]
+        file: Option<String>,
+
+        #[arg(long, default_value_t = true)]
+        summary: bool,
     },
 }
 
@@ -95,7 +113,6 @@ impl Cache {
     }
 }
 
-// 👇 TF-IDF SIMPLE: Vector de palabras
 fn get_word_vector(text: &str) -> HashMap<String, u32> {
     let mut word_count = HashMap::new();
     for word in text.split_whitespace() {
@@ -108,7 +125,6 @@ fn get_word_vector(text: &str) -> HashMap<String, u32> {
     word_count
 }
 
-// 👇 Similitud coseno entre dos vectores
 fn cosine_similarity(vec1: &HashMap<String, u32>, vec2: &HashMap<String, u32>) -> f32 {
     let mut dot_product = 0.0;
     let mut norm1 = 0.0;
@@ -134,6 +150,7 @@ fn cosine_similarity(vec1: &HashMap<String, u32>, vec2: &HashMap<String, u32>) -
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+    let start_time = Instant::now();
 
     match cli.command {
         Commands::Index { path, ignore, force } => {
@@ -221,6 +238,8 @@ fn main() -> anyhow::Result<()> {
             no_cache,
             update: _,
             semantic,
+            file,
+            summary,
         } => {
             let cache_path = Path::new(".semantic-index.json");
 
@@ -240,15 +259,59 @@ fn main() -> anyhow::Result<()> {
 
             let ext_filter: Option<Vec<&str>> = ext.as_ref().map(|e| e.split(',').collect());
 
+            // 👇 CORREGIDO: Búsqueda por nombre de archivo (usando clone para evitar mover)
+            if let Some(file_pattern) = file {
+                println!("{} Buscando archivos por nombre: '{}'", "📄".cyan(), file_pattern);
+                
+                let found: Vec<PathBuf> = cache
+                    .entries
+                    .keys()
+                    .filter(|p| {
+                        p.file_name()
+                            .and_then(|n| n.to_str())
+                            .map(|n| {
+                                if ignore_case {
+                                    n.to_lowercase().contains(&file_pattern.to_lowercase())
+                                } else {
+                                    n.contains(&file_pattern)
+                                }
+                            })
+                            .unwrap_or(false)
+                    })
+                    .cloned()
+                    .collect();
+
+                if found.is_empty() {
+                    println!("{} No se encontraron archivos con ese nombre.", "⚠️".yellow());
+                } else {
+                    let total = found.len();
+                    for p in &found {
+                        println!("{}", p.display().to_string().green());
+                    }
+                    println!("\n{} Encontrados {} archivos.", "✅".green(), total);
+                }
+                return Ok(());
+            }
+
+            let query_str = match query {
+                Some(q) => q,
+                None => {
+                    println!("{} Debes proporcionar una query con --query", "⚠️".yellow());
+                    println!("  Buscar por texto: --query 'texto'");
+                    println!("  Buscar por nombre: --file 'nombre.rs'");
+                    return Ok(());
+                }
+            };
+
             if semantic {
                 println!("{} Búsqueda SEMÁNTICA (TF-IDF)", "🧠".cyan());
             } else {
                 println!("{} Búsqueda por TEXTO", "🔍".cyan());
             }
-
-            println!("  Query: '{}'", query);
+            println!("  Query: '{}'", query_str);
 
             let encontrados = Arc::new(AtomicUsize::new(0));
+            let total_ocurrencias = Arc::new(AtomicUsize::new(0));
             let total_archivos = cache.entries.len();
 
             if verbose {
@@ -256,18 +319,18 @@ fn main() -> anyhow::Result<()> {
             }
 
             let query_words = if semantic {
-                Some(get_word_vector(&query))
+                Some(get_word_vector(&query_str))
             } else {
                 None
             };
 
             let query_regex = if !semantic {
                 Some(if ignore_case {
-                    Regex::new(&format!(r"(?i){}", regex::escape(&query)))?
+                    Regex::new(&format!(r"(?i){}", regex::escape(&query_str)))?
                 } else if exact {
-                    Regex::new(&format!(r"\b{}\b", regex::escape(&query)))?
+                    Regex::new(&format!(r"\b{}\b", regex::escape(&query_str)))?
                 } else {
-                    Regex::new(&regex::escape(&query))?
+                    Regex::new(&regex::escape(&query_str))?
                 })
             } else {
                 None
@@ -297,19 +360,33 @@ fn main() -> anyhow::Result<()> {
                     if let Some(q_vec) = &query_words {
                         let entry_vec = get_word_vector(&entry.content);
                         let similarity = cosine_similarity(q_vec, &entry_vec);
-                        
+
                         if similarity > 0.15 {
                             encontrados.fetch_add(1, Ordering::SeqCst);
-                            println!("\n{} [Similitud: {:.2}%]", p.display().to_string().green(), similarity * 100.0);
-                            
+                            total_ocurrencias.fetch_add(1, Ordering::SeqCst);
+
+                            let ocurrencias = entry_vec.values().sum::<u32>();
+                            println!("\n{} [Similitud: {:.2}%] ({} palabras clave)",
+                                p.display().to_string().green(),
+                                similarity * 100.0,
+                                ocurrencias
+                            );
+
                             let preview: String = entry.content.lines().take(3).collect::<Vec<_>>().join("\n");
                             println!("  {}", preview);
                         }
                     }
                 } else {
                     if let Some(re) = &query_regex {
-                        if re.is_match(&entry.content) {
+                        let matches: Vec<_> = re.find_iter(&entry.content).collect();
+                        if !matches.is_empty() {
                             encontrados.fetch_add(1, Ordering::SeqCst);
+                            total_ocurrencias.fetch_add(matches.len(), Ordering::SeqCst);
+
+                            println!("\n{} ({} coincidencias)",
+                                p.display().to_string().green(),
+                                matches.len()
+                            );
 
                             let lineas: Vec<String> = entry
                                 .content
@@ -319,17 +396,17 @@ fn main() -> anyhow::Result<()> {
                                     if re.is_match(line) {
                                         let line_num = format!("{}:", num + 1).yellow();
                                         let highlighted = if ignore_case {
-                                            let re_ignore = Regex::new(&format!(r"(?i){}", regex::escape(&query))).unwrap();
+                                            let re_ignore = Regex::new(&format!(r"(?i){}", regex::escape(&query_str))).unwrap();
                                             re_ignore.replace_all(line, |caps: &regex::Captures| {
                                                 caps[0].to_string().red().to_string()
                                             }).to_string()
                                         } else if exact {
-                                            let re_exact = Regex::new(&format!(r"\b{}\b", regex::escape(&query))).unwrap();
+                                            let re_exact = Regex::new(&format!(r"\b{}\b", regex::escape(&query_str))).unwrap();
                                             re_exact.replace_all(line, |caps: &regex::Captures| {
                                                 caps[0].to_string().red().to_string()
                                             }).to_string()
                                         } else {
-                                            line.replace(&query, &query.red().to_string())
+                                            line.replace(&query_str, &query_str.red().to_string())
                                         };
                                         Some(format!("  {} {}", line_num, highlighted))
                                     } else {
@@ -339,7 +416,6 @@ fn main() -> anyhow::Result<()> {
                                 .collect();
 
                             if !lineas.is_empty() {
-                                println!("\n{}", p.display().to_string().green());
                                 println!("{}", lineas.join("\n"));
                             }
                         }
@@ -352,14 +428,24 @@ fn main() -> anyhow::Result<()> {
             }
 
             let total_encontrados = encontrados.load(Ordering::SeqCst);
+            let total_matches = total_ocurrencias.load(Ordering::SeqCst);
+            let elapsed = start_time.elapsed();
+
             if total_encontrados == 0 {
                 println!("{} No se encontraron coincidencias.", "⚠️".yellow());
             } else {
-                println!(
-                    "\n{} Encontrados {} archivos.",
-                    "✅".green(),
-                    total_encontrados
-                );
+                if summary {
+                    println!("\n{} {}", "📊".blue(), "Resumen:".bold());
+                    println!("  {} Archivos encontrados: {}", "•".cyan(), total_encontrados);
+                    println!("  {} Coincidencias totales: {}", "•".cyan(), total_matches);
+                    println!("  {} Tiempo: {:.2}s", "•".cyan(), elapsed.as_secs_f32());
+                } else {
+                    println!(
+                        "\n{} Encontrados {} archivos.",
+                        "✅".green(),
+                        total_encontrados
+                    );
+                }
             }
         }
     }
