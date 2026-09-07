@@ -2,25 +2,21 @@
 
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-blue.svg)](https://www.rust-lang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-0.3.0-brightgreen.svg)](https://github.com/lecodev-26/semantic-search/releases)
+[![Version](https://img.shields.io/badge/version-0.4.0-brightgreen.svg)](https://github.com/lecodev-26/semantic-search/releases)
 [![Termux](https://img.shields.io/badge/Termux-compatible-brightgreen.svg)](https://termux.com)
 
-> **Buscador de código en terminal con índice en caché y búsqueda avanzada.**
+> **Buscador de código por SIGNIFICADO con TF-IDF, caché y búsqueda avanzada.**
 
 ---
 
 ## ✨ Características
 
-- 🔍 Búsqueda rápida en archivos de código
-- 💾 **Índice en caché** - Búsquedas instantáneas (v0.3.0)
-- 🎨 Resaltado en color de la palabra buscada
-- 📊 Muestra número de línea exacto
-- 📁 Filtro por extensiones (`--ext rs,py,js`)
-- 🚫 Ignora carpetas automáticamente (`.git`, `target`, `node_modules`)
-- 🎯 Búsqueda exacta (`--exact`)
-- 🔤 Búsqueda ignorando mayúsculas (`--ignore-case`)
-- ⏱️ Modo verbose con barra de progreso
-- 📱 Compatible con Termux
+- 🧠 **Búsqueda semántica con TF-IDF** (v0.4.0) - Busca por significado, no por texto exacto
+- 💾 **Caché inteligente** - Guarda palabras clave para búsquedas instantáneas
+- 🔍 Búsqueda por texto (grep) con resaltado en color
+- 📁 Filtro por extensiones y carpetas
+- 📱 **Compatible con Termux** (Android)
+- ⚡ **100% local** - No necesita internet
 
 ---
 
@@ -49,76 +45,66 @@ cp target/release/semantic-search $PREFIX/bin/
 
 📖 Uso
 
-Comandos básicos
+🧠 Búsqueda semántica (TF-IDF)
 
 ```bash
-# Buscar texto en todo el proyecto
+# Indexar el proyecto (genera caché de palabras clave)
+semantic-search index --path .
+
+# Buscar por SIGNIFICADO
+semantic-search search --query "función principal" --path . --semantic
+
+# Buscar con más detalles
+semantic-search search --query "validar email" --path . --semantic --verbose
+```
+
+🔍 Búsqueda por texto (grep)
+
+```bash
+# Búsqueda normal
 semantic-search search --query "fn main" --path .
 
-# Buscar solo en archivos Rust
+# Filtros
 semantic-search search --query "Result" --ext rs --path src/
 
-# Buscar ignorando mayúsculas
-semantic-search search --query "hello" --ignore-case --path .
-
-# Búsqueda exacta (palabra completa)
+# Buscar exacto
 semantic-search search --query "main" --exact --path .
 
 # Buscar con progreso
 semantic-search search --query "error" --path . --verbose
-
-# Ignorar carpetas personalizadas
-semantic-search search --query "test" --ignore "target,node_modules,dist" --path .
 ```
 
-Caché (v0.3.0)
-
-```bash
-# Primera búsqueda (crea caché automáticamente)
-semantic-search search --query "main" --path . --verbose
-
-# Segunda búsqueda (USA CACHÉ - INSTANTÁNEA)
-semantic-search search --query "fn" --path .
-
-# Forzar actualización de caché
-semantic-search search --query "main" --path . --update
-
-# Ignorar caché y escanear de nuevo
-semantic-search search --query "main" --path . --no-cache
-
-# Indexar manualmente (guardar caché sin buscar)
-semantic-search index --path .
-
-# Forzar re-indexado completo
-semantic-search index --path . --force
-```
-
-Indexar (estadísticas)
-
-```bash
-# Mostrar estadísticas del proyecto
-semantic-search index --path .
-
-# Ignorar carpetas personalizadas
-semantic-search index --path . --ignore "target,build"
-```
-
-Ejemplo de salida
+📊 Ejemplo de salida (búsqueda semántica)
 
 ```
-🔍 Buscando: 'main' en src/
-📄 Revisando 1 archivos...
+🧠 Búsqueda SEMÁNTICA (TF-IDF)
+  Query: 'función principal'
+📄 Revisando 45 archivos...
+  Progreso: 45/45
 
-src/main.rs
-  34: fn main() -> anyhow::Result<()> {
+src/main.rs [Similitud: 68.42%]
+  fn main() -> anyhow::Result<()> {
+      let cli = Cli::parse();
+      match cli.command {
 
-✅ Encontrados 1 archivos con coincidencias
+✅ Encontrados 3 archivos.
 ```
 
 ---
 
+🗺️ Hoja de ruta
+```marckdown
+Versión Novedades
+v0.1.0 Buscador simple con colores
+v0.2.0 Filtros, ignorar carpetas, búsqueda exacta
+v0.3.0 ✅ Caché - búsquedas instantáneas
+v0.4.0 ✅ Búsqueda semántica con TF-IDF
+v1.0.0 🚀 Estable, publicación en crates.io (próximamente)
+```
+---
+
 📁 Extensiones soportadas
-```text
+```marckdown
 · Rust (.rs)
 · Python (.py)
 · JavaScript/TypeScript (.js, .ts)
@@ -126,17 +112,6 @@ src/main.rs
 · Java (.java)
 · C/C++ (.c, .cpp, .h)
 · Y más: .toml, .json, .yaml, .md, .sh, .bash, .css, .html, .xml, .sql, .rb, .php, .swift, .kt
-```
----
-
-🗺️ Hoja de ruta
-```text
-Versión Novedades
-v0.1.0 Base: buscador simple con colores
-v0.2.0 Búsqueda avanzada: filtros, ignorar carpetas, exacta
-v0.3.0 ✅ Índice en caché - búsquedas instantáneas
-v0.4.0 🚀 Búsqueda semántica con IA local (próximamente)
-v1.0.0 Estable con documentación completa
 ```
 ---
 
