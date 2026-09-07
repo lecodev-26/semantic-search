@@ -2,16 +2,17 @@
 
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-blue.svg)](https://www.rust-lang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-0.2.0-brightgreen.svg)](https://github.com/lecodev-26/semantic-search/releases)
+[![Version](https://img.shields.io/badge/version-0.3.0-brightgreen.svg)](https://github.com/lecodev-26/semantic-search/releases)
 [![Termux](https://img.shields.io/badge/Termux-compatible-brightgreen.svg)](https://termux.com)
 
-> **Buscador de código en terminal con búsqueda avanzada, filtros y resaltado.**
+> **Buscador de código en terminal con índice en caché y búsqueda avanzada.**
 
 ---
 
 ## ✨ Características
 
 - 🔍 Búsqueda rápida en archivos de código
+- 💾 **Índice en caché** - Búsquedas instantáneas (v0.3.0)
 - 🎨 Resaltado en color de la palabra buscada
 - 📊 Muestra número de línea exacto
 - 📁 Filtro por extensiones (`--ext rs,py,js`)
@@ -70,6 +71,28 @@ semantic-search search --query "error" --path . --verbose
 semantic-search search --query "test" --ignore "target,node_modules,dist" --path .
 ```
 
+Caché (v0.3.0)
+
+```bash
+# Primera búsqueda (crea caché automáticamente)
+semantic-search search --query "main" --path . --verbose
+
+# Segunda búsqueda (USA CACHÉ - INSTANTÁNEA)
+semantic-search search --query "fn" --path .
+
+# Forzar actualización de caché
+semantic-search search --query "main" --path . --update
+
+# Ignorar caché y escanear de nuevo
+semantic-search search --query "main" --path . --no-cache
+
+# Indexar manualmente (guardar caché sin buscar)
+semantic-search index --path .
+
+# Forzar re-indexado completo
+semantic-search index --path . --force
+```
+
 Indexar (estadísticas)
 
 ```bash
@@ -84,6 +107,7 @@ Ejemplo de salida
 
 ```
 🔍 Buscando: 'main' en src/
+📄 Revisando 1 archivos...
 
 src/main.rs
   34: fn main() -> anyhow::Result<()> {
@@ -102,6 +126,17 @@ src/main.rs
 · Java (.java)
 · C/C++ (.c, .cpp, .h)
 · Y más: .toml, .json, .yaml, .md, .sh, .bash, .css, .html, .xml, .sql, .rb, .php, .swift, .kt
+
+---
+
+🗺️ Hoja de ruta
+
+Versión Novedades
+v0.1.0 Base: buscador simple con colores
+v0.2.0 Búsqueda avanzada: filtros, ignorar carpetas, exacta
+v0.3.0 ✅ Índice en caché - búsquedas instantáneas
+v0.4.0 🚀 Búsqueda semántica con IA local (próximamente)
+v1.0.0 Estable con documentación completa
 
 ---
 
@@ -132,11 +167,3 @@ MIT
 👤 Autor
 
 Manuel (@lecodev-26)
-
----
-
-⬆ Volver arriba
-
-```
-
----
