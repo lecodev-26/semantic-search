@@ -1,9 +1,9 @@
 [package]
 name = "semantic-search"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 authors = ["Manuel <lecodev-26@github.com>"]
-description = "🔍 Buscador semántico de código con búsqueda avanzada"
+description = "🔍 Buscador semántico de código con índice en caché"
 license = "MIT"
 repository = "https://github.com/lecodev-26/semantic-search"
 readme = "README.md"
@@ -15,6 +15,9 @@ walkdir = "2.4"
 anyhow = "1.0"
 ignore = "0.4"
 regex = "1.10"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = "0.4"
 
 [dev-dependencies]
 assert_cmd = "2.0"
