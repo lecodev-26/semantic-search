@@ -118,7 +118,7 @@ src/main.rs
 ---
 
 📁 Extensiones soportadas
-
+```text
 · Rust (.rs)
 · Python (.py)
 · JavaScript/TypeScript (.js, .ts)
@@ -126,18 +126,18 @@ src/main.rs
 · Java (.java)
 · C/C++ (.c, .cpp, .h)
 · Y más: .toml, .json, .yaml, .md, .sh, .bash, .css, .html, .xml, .sql, .rb, .php, .swift, .kt
-
+```
 ---
 
 🗺️ Hoja de ruta
-
+```text
 Versión Novedades
 v0.1.0 Base: buscador simple con colores
 v0.2.0 Búsqueda avanzada: filtros, ignorar carpetas, exacta
 v0.3.0 ✅ Índice en caché - búsquedas instantáneas
 v0.4.0 🚀 Búsqueda semántica con IA local (próximamente)
 v1.0.0 Estable con documentación completa
-
+```
 ---
 
 🛠️ Desarrollo
