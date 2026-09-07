@@ -6,12 +6,13 @@
 *.lib
 *.ilk
 *.obj
-*.pdb
-*.dll
-*.so
-*.dylib
-*.a
 
+# Proyecto
+.semantic-index.json
+models/*.onnx
+models/*.bin
+models/*.safetensors
+*.log
 
 # IDE
 .vscode/
@@ -23,28 +24,5 @@
 .DS_Store
 Thumbs.db
 
-# Project specific
-*.lmdb/
-.semantic-search/
-*.onnx
-*.tokenizers
-
-# Logs
-*.log
-logs/
-
-# Environment
-.env
-.env.local
-
-# Build artifacts
-dist/
-build/
-release/
-
-# Coverage
-*.profraw
-*.profdata
-target/cov/
-.semantic-index.json
-.semantic-index.json
+# Cargo
+Cargo.lock
