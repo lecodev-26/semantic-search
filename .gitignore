@@ -1,0 +1,50 @@
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+*.exp
+*.lib
+*.ilk
+*.obj
+*.pdb
+*.dll
+*.so
+*.dylib
+*.a
+
+# Dependencies
+Cargo.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+*.lmdb/
+.semantic-search/
+*.onnx
+*.tokenizers
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env
+.env.local
+
+# Build artifacts
+dist/
+build/
+release/
+
+# Coverage
+*.profraw
+*.profdata
+target/cov/

@@ -1,0 +1,12 @@
+max_width = 100
+edition = "2021"
+use_small_heuristics = "Max"
+reorder_imports = true
+reorder_modules = true
+reorder_impl_items = true
+match_block_trailing_comma = true
+# Preservar formato de comentarios
+format_code_in_doc_comments = true
+# Estilo de imports
+imports_granularity = "Crate"
+group_imports = "StdExternalCrate"
