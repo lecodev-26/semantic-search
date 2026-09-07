@@ -47,3 +47,4 @@ release/
 *.profdata
 target/cov/
 .semantic-index.json
+.semantic-index.json
