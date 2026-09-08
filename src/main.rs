@@ -5,17 +5,20 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 use byte_unit::Byte;
 use glob::Pattern;
+use dirs;
+
 
 #[derive(Parser)]
 #[command(name = "semantic-search")]
-#[command(version = "0.7.0")]
-#[command(about = "🔍 Buscador semántico de código con TF-IDF, caché y filtros avanzados")]
+#[command(version = "0.8.0")]
+#[command(about = "🔍 Buscador semántico de código con configuración, alias y modo interactivo")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -23,7 +26,14 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Indexar archivos y guardar caché
+    Init {
+        #[arg(short, long)]
+        force: bool,
+    },
+    Alias {
+        #[command(subcommand)]
+        action: AliasAction,
+    },
     Index {
         #[arg(short, long)]
         path: String,
@@ -33,58 +43,60 @@ enum Commands {
         force: bool,
         #[arg(short = 'e', long, value_name = "EXT")]
         ext: Option<String>,
-        /// Ignorar archivos por patrón (ej: *.log, *.tmp) - NUEVO
         #[arg(long, value_name = "PATTERN")]
         ignore_pattern: Option<String>,
     },
-    /// Buscar en archivos
     Search {
         #[arg(short, long)]
         query: Option<String>,
-
         #[arg(short, long, default_value = ".")]
         path: String,
-
         #[arg(short = 'e', long, value_name = "EXT")]
         ext: Option<String>,
-
         #[arg(short = 'i', long, default_value = ".git,target,node_modules,dist,build")]
         ignore: String,
-
         #[arg(long)]
         exact: bool,
-
         #[arg(long)]
         ignore_case: bool,
-
         #[arg(short, long)]
         verbose: bool,
-
         #[arg(long)]
         no_cache: bool,
-
         #[arg(long)]
         update: bool,
-
         #[arg(long, default_value_t = false)]
         semantic: bool,
-
         #[arg(short = 'f', long, value_name = "FILE")]
         file: Option<String>,
-
         #[arg(long, default_value_t = true)]
         summary: bool,
-
         #[arg(long, value_name = "SIZE")]
         max_size: Option<String>,
-
-        /// Ignorar archivos por patrón (ej: *.log, *.tmp) - NUEVO
         #[arg(long, value_name = "PATTERN")]
         ignore_pattern: Option<String>,
-
-        /// Buscar dentro de archivos comprimidos (zip, tar.gz) - NUEVO
         #[arg(long)]
         extract: bool,
+        #[arg(long)]
+        interactive: bool,
+        #[arg(long, value_name = "NAME")]
+        alias: Option<String>,
+    },
+}
+
+#[derive(Subcommand, Debug, Clone)]
+enum AliasAction {
+    Save {
+        name: String,
+        query: String,
+        params: Vec<String>,
+    },
+    List,
+    Remove {
+        name: String,
+    },
+    Run {
+        name: String,
     },
 }
 
@@ -132,7 +144,99 @@ impl Cache {
     }
 }
 
-// 👇 TF-IDF SIMPLE
+#[derive(Debug, Serialize, Deserialize, Default)]
+struct Config {
+    default_ext: Option<Vec<String>>,
+    default_ignore: Option<Vec<String>>,
+    default_ignore_pattern: Option<String>,
+    max_size: Option<String>,
+    verbose: Option<bool>,
+    interactive: Option<bool>,
+    aliases: HashMap<String, AliasEntry>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct AliasEntry {
+    query: String,
+    params: Vec<String>,
+}
+
+fn get_config_path() -> PathBuf {
+    if let Some(config_dir) = dirs::config_dir() {
+        config_dir.join("semantic-search").join("config.toml")
+    } else {
+        PathBuf::from(".semantic-search-config.toml")
+    }
+}
+
+fn load_config() -> anyhow::Result<Config> {
+    let config_path = get_config_path();
+    if config_path.exists() {
+        let content = fs::read_to_string(&config_path)?;
+        let config: Config = toml::from_str(&content)?;
+        Ok(config)
+    } else {
+        Ok(Config::default())
+    }
+}
+
+fn save_config(config: &Config) -> anyhow::Result<()> {
+    let config_path = get_config_path();
+    if let Some(parent) = config_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let content = toml::to_string_pretty(config)?;
+    fs::write(config_path, content)?;
+    Ok(())
+}
+
+fn apply_config_to_search(
+    mut ext: Option<String>,
+    mut ignore: String,
+    mut verbose: bool,
+    mut interactive: bool,
+    mut max_size: Option<String>,
+    mut ignore_pattern: Option<String>,
+    config: &Config,
+) -> (Option<String>, String, bool, bool, Option<String>, Option<String>) {
+    if let Some(ref default_ext) = config.default_ext {
+        if ext.is_none() {
+            ext = Some(default_ext.join(","));
+        }
+    }
+    if let Some(ref default_ignore) = config.default_ignore {
+        ignore = default_ignore.join(",");
+    }
+    if config.verbose.unwrap_or(false) && !verbose {
+        verbose = true;
+    }
+    if config.interactive.unwrap_or(false) && !interactive {
+        interactive = true;
+    }
+    if max_size.is_none() {
+        max_size = config.max_size.clone();
+    }
+    if ignore_pattern.is_none() {
+        ignore_pattern = config.default_ignore_pattern.clone();
+    }
+    (ext, ignore, verbose, interactive, max_size, ignore_pattern)
+}
+
+fn clear_screen() {
+    print!("\x1B[2J\x1B[1;1H");
+    io::stdout().flush().unwrap();
+}
+
+struct SearchResult {
+    path: PathBuf,
+    content: String,
+    matches: usize,
+    size: u64,
+    line_start: Option<usize>,
+    line_end: Option<usize>,
+    highlight_regex: Option<Regex>,
+}
+
 fn get_word_vector(text: &str) -> HashMap<String, u32> {
     let mut word_count = HashMap::new();
     for word in text.split_whitespace() {
@@ -186,7 +290,6 @@ fn format_size(bytes: u64) -> String {
     }
 }
 
-// 👇 NUEVO: Verificar si un archivo coincide con un patrón glob
 fn matches_pattern(path: &Path, pattern: &str) -> bool {
     if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
         if let Ok(pattern) = Pattern::new(pattern) {
@@ -196,15 +299,9 @@ fn matches_pattern(path: &Path, pattern: &str) -> bool {
     false
 }
 
-// 👇 NUEVO: Extraer contenido de archivos comprimidos (simplificado)
 fn extract_archive_content(path: &Path) -> anyhow::Result<Option<String>> {
-    let path_str = path.to_string_lossy();
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-
-    // Solo soportamos .zip por ahora
     if ext == "zip" {
-        // Placeholder: en una versión futura se implementará extracción real
-        // Por ahora, intentamos leerlo como texto (fallará si es binario)
         if let Ok(content) = fs::read_to_string(path) {
             return Ok(Some(content));
         }
@@ -212,11 +309,129 @@ fn extract_archive_content(path: &Path) -> anyhow::Result<Option<String>> {
     Ok(None)
 }
 
+fn interactive_mode(results: &[SearchResult]) -> anyhow::Result<()> {
+    if results.is_empty() {
+        println!("{} No hay resultados para mostrar.", "⚠️".yellow());
+        return Ok(());
+    }
+
+    let total = results.len();
+    let mut idx = 0;
+
+    loop {
+        clear_screen();
+        println!("{} {} de {} (Presiona Enter para avanzar, q para salir)", 
+            "📖".cyan(), idx + 1, total);
+
+        let result = &results[idx];
+        println!("\n{}", result.path.display().to_string().green().bold());
+        println!("  Coincidencias: {}", result.matches);
+        println!("  Tamaño: {}", format_size(result.size));
+
+        let lines: Vec<&str> = result.content.lines().collect();
+        let start = result.line_start.unwrap_or(0).saturating_sub(3);
+        let end = result.line_end.unwrap_or(lines.len()).saturating_add(3);
+
+        for (i, line) in lines.iter().enumerate().take(end).skip(start) {
+            let line_num = format!("{}:", i + 1).yellow();
+            let display_line = if let Some(ref re) = result.highlight_regex {
+                re.replace_all(line, |caps: &regex::Captures| {
+                    caps[0].to_string().red().to_string()
+                }).to_string()
+            } else {
+                line.to_string()
+            };
+            println!("  {} {}", line_num, display_line);
+        }
+
+        println!("\n---");
+        print!("[Enter] siguiente  [q] salir ");
+        io::stdout().flush()?;
+
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        let input = input.trim();
+
+        if input == "q" || input == "Q" {
+            break;
+        }
+
+        idx = (idx + 1) % total;
+        if idx == 0 {
+            println!("\n{} Has llegado al final. Volviendo al principio...", "🔄".yellow());
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+    }
+
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let start_time = Instant::now();
 
+    let config = load_config().unwrap_or_default();
+
     match cli.command {
+        Commands::Init { force } => {
+            let config_path = get_config_path();
+            if config_path.exists() && !force {
+                println!("{} Configuración ya existe. Usa --force para sobreescribir.", "⚠️".yellow());
+                return Ok(());
+            }
+            let default_config = Config {
+                default_ext: Some(vec!["rs".to_string(), "md".to_string(), "toml".to_string()]),
+                default_ignore: Some(vec![".git".to_string(), "target".to_string(), "node_modules".to_string()]),
+                default_ignore_pattern: Some("*.log".to_string()),
+                max_size: Some("1MB".to_string()),
+                verbose: Some(true),
+                interactive: Some(false),
+                aliases: HashMap::new(),
+            };
+            save_config(&default_config)?;
+            println!("{} Configuración creada en: {}", "✅".green(), config_path.display());
+            println!("{} Puedes editarla manualmente o usar 'alias' para gestionar búsquedas.", "💡".cyan());
+        }
+
+        Commands::Alias { action } => {
+            let mut config = load_config()?;
+            match action {
+                AliasAction::Save { name, query, params } => {
+                    config.aliases.insert(name.clone(), AliasEntry { query, params });
+                    save_config(&config)?;
+                    println!("{} Alias '{}' guardado.", "✅".green(), name);
+                }
+                AliasAction::List => {
+                    if config.aliases.is_empty() {
+                        println!("{} No hay alias guardados.", "📭".yellow());
+                    } else {
+                        println!("{} Alias guardados:", "📋".blue());
+                        for (name, entry) in &config.aliases {
+                            println!("  {}: {} {}", name.green(), entry.query, entry.params.join(" "));
+                        }
+                    }
+                }
+                AliasAction::Remove { name } => {
+                    if config.aliases.remove(&name).is_some() {
+                        save_config(&config)?;
+                        println!("{} Alias '{}' eliminado.", "🗑️".green(), name);
+                    } else {
+                        println!("{} Alias '{}' no encontrado.", "⚠️".yellow(), name);
+                    }
+                }
+                AliasAction::Run { name } => {
+                    if let Some(entry) = config.aliases.get(&name) {
+                        println!("{} Ejecutando alias '{}':", "🚀".cyan(), name);
+                        println!("  query: {}", entry.query);
+                        println!("  params: {}", entry.params.join(" "));
+                        println!("💡 Para ejecutar, usa: semantic-search search --query \"{}\" {}", entry.query, entry.params.join(" "));
+                    } else {
+                        println!("{} Alias '{}' no encontrado.", "⚠️".yellow(), name);
+                    }
+                }
+            }
+        }
+
         Commands::Index { path, ignore, force, ext, ignore_pattern } => {
             let cache_path = Path::new(".semantic-index.json");
             if force && cache_path.exists() {
@@ -251,7 +466,6 @@ fn main() -> anyhow::Result<()> {
                 }
 
                 if entry.file_type().map(|ft| ft.is_file()).unwrap_or(false) {
-                    // 👇 NUEVO: Ignorar por patrón glob
                     if let Some(ref pattern) = ignore_pattern {
                         if matches_pattern(p, pattern) {
                             continue;
@@ -273,7 +487,7 @@ fn main() -> anyhow::Result<()> {
                             "rs", "py", "js", "ts", "go", "java", "c", "cpp", "h",
                             "toml", "json", "txt", "md", "sh", "bash", "yaml", "yml",
                             "css", "html", "xml", "sql", "rb", "php", "swift", "kt",
-                            "zip", // NUEVO: soporte para zip
+                            "zip",
                         ];
                         if exts.contains(&ext_str) {
                             if let Ok(content) = fs::read_to_string(p) {
@@ -324,9 +538,9 @@ fn main() -> anyhow::Result<()> {
 
         Commands::Search {
             query,
-            path: _,
+            path,
             ext,
-            ignore: _,
+            ignore,
             exact,
             ignore_case,
             verbose,
@@ -338,7 +552,70 @@ fn main() -> anyhow::Result<()> {
             max_size,
             ignore_pattern,
             extract,
+            interactive,
+            alias,
         } => {
+            let (query, ext, ignore, verbose, interactive, max_size, ignore_pattern) = if let Some(alias_name) = alias {
+                let config = load_config()?;
+                if let Some(entry) = config.aliases.get(&alias_name) {
+                    let q = entry.query.clone();
+                    let params = entry.params.clone();
+                    let mut new_ext = ext;
+                    let mut new_ignore = ignore;
+                    let mut new_verbose = verbose;
+                    let mut new_interactive = interactive;
+                    let mut new_max_size = max_size;
+                    let mut new_ignore_pattern = ignore_pattern;
+                    for param in &params {
+                        if param.starts_with("--ext") || param.starts_with("-e") {
+                            if let Some(ext_value) = params.iter().find(|p| p.starts_with("--ext") || p.starts_with("-e")).and_then(|p| p.split('=').nth(1)) {
+                                new_ext = Some(ext_value.to_string());
+                            }
+                        }
+                        if param == "--verbose" || param == "-v" {
+                            new_verbose = true;
+                        }
+                        if param == "--interactive" {
+                            new_interactive = true;
+                        }
+                        if param.starts_with("--max-size") {
+                            if let Some(size_value) = params.iter().find(|p| p.starts_with("--max-size")).and_then(|p| p.split('=').nth(1)) {
+                                new_max_size = Some(size_value.to_string());
+                            }
+                        }
+                        if param.starts_with("--ignore-pattern") {
+                            if let Some(pattern_value) = params.iter().find(|p| p.starts_with("--ignore-pattern")).and_then(|p| p.split('=').nth(1)) {
+                                new_ignore_pattern = Some(pattern_value.to_string());
+                            }
+                        }
+                        if param.starts_with("--ignore") || param.starts_with("-i") {
+                            if let Some(ignore_value) = params.iter().find(|p| p.starts_with("--ignore") || p.starts_with("-i")).and_then(|p| p.split('=').nth(1)) {
+                                new_ignore = ignore_value.to_string();
+                            }
+                        }
+                    }
+                    (Some(q), new_ext, new_ignore, new_verbose, new_interactive, new_max_size, new_ignore_pattern)
+                } else {
+                    println!("{} Alias '{}' no encontrado.", "⚠️".yellow(), alias_name);
+                    return Ok(());
+                }
+            } else if let Some(q) = query {
+                let (new_ext, new_ignore, new_verbose, new_interactive, new_max_size, new_ignore_pattern) = 
+                    apply_config_to_search(ext, ignore, verbose, interactive, max_size, ignore_pattern, &config);
+                (Some(q), new_ext, new_ignore, new_verbose, new_interactive, new_max_size, new_ignore_pattern)
+            } else {
+                println!("{} Debes proporcionar una query con --query o un alias con --alias", "⚠️".yellow());
+                return Ok(());
+            };
+
+            let query_str = match query {
+                Some(q) => q,
+                None => {
+                    println!("{} Error: no se pudo obtener la query.", "⚠️".yellow());
+                    return Ok(());
+                }
+            };
+
             let cache_path = Path::new(".semantic-index.json");
 
             let use_cache = !no_cache && cache_path.exists();
@@ -396,16 +673,6 @@ fn main() -> anyhow::Result<()> {
                 return Ok(());
             }
 
-            let query_str = match query {
-                Some(q) => q,
-                None => {
-                    println!("{} Debes proporcionar una query con --query", "⚠️".yellow());
-                    println!("  Buscar por texto: --query 'texto'");
-                    println!("  Buscar por nombre: --file 'nombre.rs'");
-                    return Ok(());
-                }
-            };
-
             if semantic {
                 println!("{} Búsqueda SEMÁNTICA (TF-IDF)", "🧠".cyan());
             } else {
@@ -422,10 +689,14 @@ fn main() -> anyhow::Result<()> {
             if extract {
                 println!("  {} Buscando en archivos comprimidos (experimental)", "📦".blue());
             }
+            if interactive {
+                println!("  {} Modo interactivo activado", "🎮".blue());
+            }
 
             let encontrados = Arc::new(AtomicUsize::new(0));
             let total_ocurrencias = Arc::new(AtomicUsize::new(0));
             let total_archivos = cache.entries.len();
+            let mut search_results = Vec::new();
 
             if verbose {
                 println!("{} Revisando {} archivos...", "📄".blue(), total_archivos);
@@ -456,7 +727,6 @@ fn main() -> anyhow::Result<()> {
                     print!("\r  Progreso: {}/{}", i + 1, total_archivos);
                 }
 
-                // 👇 NUEVO: Ignorar por patrón glob
                 if let Some(ref pattern) = ignore_pattern {
                     if matches_pattern(p, pattern) {
                         continue;
@@ -482,7 +752,6 @@ fn main() -> anyhow::Result<()> {
                     continue;
                 }
 
-                // 👇 NUEVO: Soporte para archivos comprimidos
                 let content_to_search = if extract {
                     if let Ok(Some(extracted)) = extract_archive_content(p) {
                         extracted
@@ -503,15 +772,27 @@ fn main() -> anyhow::Result<()> {
                             total_ocurrencias.fetch_add(1, Ordering::SeqCst);
 
                             let ocurrencias = entry_vec.values().sum::<u32>();
-                            println!("\n{} [Similitud: {:.2}%] ({} palabras clave) [{}]",
-                                p.display().to_string().green(),
-                                similarity * 100.0,
-                                ocurrencias,
-                                format_size(entry.size).dimmed()
-                            );
+                            let result = SearchResult {
+                                path: p.to_path_buf(),
+                                content: content_to_search.clone(),
+                                matches: ocurrencias as usize,
+                                size: entry.size,
+                                line_start: None,
+                                line_end: None,
+                                highlight_regex: None,
+                            };
+                            search_results.push(result);
 
-                            let preview: String = content_to_search.lines().take(3).collect::<Vec<_>>().join("\n");
-                            println!("  {}", preview);
+                            if !interactive {
+                                println!("\n{} [Similitud: {:.2}%] ({} palabras clave) [{}]",
+                                    p.display().to_string().green(),
+                                    similarity * 100.0,
+                                    ocurrencias,
+                                    format_size(entry.size).dimmed()
+                                );
+                                let preview: String = content_to_search.lines().take(3).collect::<Vec<_>>().join("\n");
+                                println!("  {}", preview);
+                            }
                         }
                     }
                 } else {
@@ -521,40 +802,65 @@ fn main() -> anyhow::Result<()> {
                             encontrados.fetch_add(1, Ordering::SeqCst);
                             total_ocurrencias.fetch_add(matches.len(), Ordering::SeqCst);
 
-                            println!("\n{} ({} coincidencias) [{}]",
-                                p.display().to_string().green(),
-                                matches.len(),
-                                format_size(entry.size).dimmed()
-                            );
+                            let first_match = matches.first().map(|m| m.start());
+                            let last_match = matches.last().map(|m| m.end());
+                            let (line_start, line_end) = if let (Some(start), Some(end)) = (first_match, last_match) {
+                                let content_before = &content_to_search[..start];
+                                let line_start = content_before.lines().count();
+                                let content_until = &content_to_search[..end];
+                                let line_end = content_until.lines().count();
+                                (Some(line_start), Some(line_end))
+                            } else {
+                                (None, None)
+                            };
 
-                            let lineas: Vec<String> = content_to_search
-                                .lines()
-                                .enumerate()
-                                .filter_map(|(num, line)| {
-                                    if re.is_match(line) {
-                                        let line_num = format!("{}:", num + 1).yellow();
-                                        let highlighted = if ignore_case {
-                                            let re_ignore = Regex::new(&format!(r"(?i){}", regex::escape(&query_str))).unwrap();
-                                            re_ignore.replace_all(line, |caps: &regex::Captures| {
-                                                caps[0].to_string().red().to_string()
-                                            }).to_string()
-                                        } else if exact {
-                                            let re_exact = Regex::new(&format!(r"\b{}\b", regex::escape(&query_str))).unwrap();
-                                            re_exact.replace_all(line, |caps: &regex::Captures| {
-                                                caps[0].to_string().red().to_string()
-                                            }).to_string()
+                            let result = SearchResult {
+                                path: p.to_path_buf(),
+                                content: content_to_search.clone(),
+                                matches: matches.len(),
+                                size: entry.size,
+                                line_start,
+                                line_end,
+                                highlight_regex: query_regex.clone(),
+                            };
+                            search_results.push(result);
+
+                            if !interactive {
+                                println!("\n{} ({} coincidencias) [{}]",
+                                    p.display().to_string().green(),
+                                    matches.len(),
+                                    format_size(entry.size).dimmed()
+                                );
+
+                                let lineas: Vec<String> = content_to_search
+                                    .lines()
+                                    .enumerate()
+                                    .filter_map(|(num, line)| {
+                                        if re.is_match(line) {
+                                            let line_num = format!("{}:", num + 1).yellow();
+                                            let highlighted = if ignore_case {
+                                                let re_ignore = Regex::new(&format!(r"(?i){}", regex::escape(&query_str))).unwrap();
+                                                re_ignore.replace_all(line, |caps: &regex::Captures| {
+                                                    caps[0].to_string().red().to_string()
+                                                }).to_string()
+                                            } else if exact {
+                                                let re_exact = Regex::new(&format!(r"\b{}\b", regex::escape(&query_str))).unwrap();
+                                                re_exact.replace_all(line, |caps: &regex::Captures| {
+                                                    caps[0].to_string().red().to_string()
+                                                }).to_string()
+                                            } else {
+                                                line.replace(&query_str, &query_str.red().to_string())
+                                            };
+                                            Some(format!("  {} {}", line_num, highlighted))
                                         } else {
-                                            line.replace(&query_str, &query_str.red().to_string())
-                                        };
-                                        Some(format!("  {} {}", line_num, highlighted))
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .collect();
+                                            None
+                                        }
+                                    })
+                                    .collect();
 
-                            if !lineas.is_empty() {
-                                println!("{}", lineas.join("\n"));
+                                if !lineas.is_empty() {
+                                    println!("{}", lineas.join("\n"));
+                                }
                             }
                         }
                     }
@@ -569,9 +875,11 @@ fn main() -> anyhow::Result<()> {
             let total_matches = total_ocurrencias.load(Ordering::SeqCst);
             let elapsed = start_time.elapsed();
 
-            if total_encontrados == 0 {
+            if interactive && !search_results.is_empty() {
+                interactive_mode(&search_results)?;
+            } else if !interactive && total_encontrados == 0 {
                 println!("{} No se encontraron coincidencias.", "⚠️".yellow());
-            } else {
+            } else if !interactive {
                 if summary {
                     println!("\n{} {}", "📊".blue(), "Resumen:".bold());
                     println!("  {} Archivos encontrados: {}", "•".cyan(), total_encontrados);
