@@ -80,7 +80,7 @@ semantic-search search --query "fn" --path . --verbose
 ---
 
 🗺️ Hoja de ruta
-
+```maeckdown
 Versión Novedades Estado
 v0.1.0 Base: buscador simple con colores ✅
 v0.2.0 Filtros, ignorar carpetas, búsqueda exacta ✅
@@ -91,7 +91,7 @@ v0.6.0 Indexado por extensión, filtro por tamaño, tamaño visible ✅
 v0.7.0 Próximamente... ⬜
 v0.8.0 Próximamente... ⬜
 v1.0.0 Publicación en crates.io ⬜
-
+```
 ---
 
 📄 Licencia
