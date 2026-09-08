@@ -1,8 +1,7 @@
 //! # semantic-search
 //! 
-//! Buscador de código con búsqueda semántica y caché
+//! Buscador de código por significado con TF-IDF, caché y filtros avanzados.
 
 pub mod cli;
 pub mod core;
-pub mod embeddings;
 pub mod cache;
