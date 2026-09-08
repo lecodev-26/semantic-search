@@ -2,30 +2,28 @@
 
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-blue.svg)](https://www.rust-lang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-0.5.0-brightgreen.svg)](https://github.com/lecodev-26/semantic-search/releases)
+[![Version](https://img.shields.io/badge/version-0.6.0-brightgreen.svg)](https://github.com/lecodev-26/semantic-search/releases)
 [![Termux](https://img.shields.io/badge/Termux-compatible-brightgreen.svg)](https://termux.com)
 
-> **Buscador de código por SIGNIFICADO con TF-IDF, caché y búsqueda por nombre de archivo.**
+> **Buscador de código por SIGNIFICADO con TF-IDF, caché y filtros avanzados.**
 
 ---
 
 ## ✨ Características
 
-- 🧠 **Búsqueda semántica con TF-IDF** (v0.4.0) - Busca por significado
-- 📄 **Búsqueda por nombre de archivo** (v0.5.0) - Encuentra archivos por su nombre
-- 🔢 **Contador de ocurrencias** (v0.5.0) - Muestra cuántas coincidencias por archivo
-- 📊 **Resumen de resultados** (v0.5.0) - Archivos, coincidencias y tiempo
-- 💾 **Caché inteligente** - Guarda palabras clave para búsquedas instantáneas
-- 🔍 Búsqueda por texto (grep) con resaltado en color
-- 📁 Filtro por extensiones y carpetas
-- 📱 **Compatible con Termux** (Android)
-- ⚡ **100% local** - No necesita internet
+- 🧠 **Búsqueda semántica con TF-IDF** (por significado, no por texto exacto)
+- 📄 **Búsqueda por nombre de archivo** (`--file "main.rs"`)
+- 🔢 **Contador de ocurrencias** (muestra cuántas coincidencias hay por archivo)
+- 📊 **Resumen de resultados** (archivos, coincidencias totales y tiempo)
+- 💾 **Caché inteligente** (búsquedas instantáneas después del primer indexado)
+- 📁 **Indexado por extensión** (`--ext rs,md,toml` para indexar solo esos)
+- 📏 **Filtro por tamaño** (`--max-size 100KB` para ignorar archivos grandes)
+- 🔍 **Búsqueda por texto** con resaltado en color y números de línea
+- 📱 **Compatible con Termux** (Android) y 100% local (sin internet)
 
 ---
 
 ## 🚀 Instalación
-
-### Desde GitHub
 
 ```bash
 git clone https://github.com/lecodev-26/semantic-search
@@ -34,118 +32,65 @@ cargo build --release
 sudo cp target/release/semantic-search /usr/local/bin/
 ```
 
-En Termux
-
-```bash
-pkg install rust
-git clone https://github.com/lecodev-26/semantic-search
-cd semantic-search
-cargo build --release
-cp target/release/semantic-search $PREFIX/bin/
-```
-
 ---
 
 📖 Uso
 
-📄 Buscar por nombre de archivo (v0.5.0)
+1. Indexar el proyecto (necesario para búsquedas rápidas)
 
 ```bash
-# Buscar archivo exacto
-semantic-search search --file "main.rs" --path .
-
-# Buscar ignorando mayúsculas
-semantic-search search --file "Readme" --ignore-case --path .
-```
-
-🧠 Búsqueda semántica (TF-IDF)
-
-```bash
-# Indexar primero
+# Indexar todo
 semantic-search index --path .
 
-# Buscar por significado
-semantic-search search --query "función principal" --path . --semantic
-
-# Con progreso
-semantic-search search --query "validar email" --path . --semantic --verbose
+# Indexar solo ciertas extensiones (ej: Rust y Markdown)
+semantic-search index --path . --ext rs,md
 ```
 
-🔍 Búsqueda por texto
+2. Buscar por significado (semántica)
 
 ```bash
-# Búsqueda normal (con contador de ocurrencias)
+semantic-search search --query "función principal" --path . --semantic
+```
+
+3. Buscar por texto (grep mejorado)
+
+```bash
+# Búsqueda normal
 semantic-search search --query "fn main" --path .
 
-# Con resumen al final (activado por defecto)
-semantic-search search --query "error" --path . --verbose
+# Con filtro de tamaño (ignora archivos > 100KB)
+semantic-search search --query "fn" --path . --max-size 100KB
 
-# Desactivar resumen
-semantic-search search --query "error" --path . --no-summary
-
-# Filtros
-semantic-search search --query "Result" --ext rs --path src/
+# Búsqueda exacta
+semantic-search search --query "main" --path . --exact
 ```
 
-📊 Ejemplo de salida
+4. Buscar por nombre de archivo
 
+```bash
+semantic-search search --file "main.rs" --path .
 ```
-🔍 Búsqueda por TEXTO
-  Query: 'fn'
-📄 Revisando 10 archivos...
 
-./src/main.rs (7 coincidencias)
-  34: fn main() -> anyhow::Result<()> {
+5. Modo verbose (con progreso)
 
-📊 Resumen:
-  • Archivos encontrados: 3
-  • Coincidencias totales: 12
-  • Tiempo: 0.00s
+```bash
+semantic-search search --query "fn" --path . --verbose
 ```
 
 ---
 
 🗺️ Hoja de ruta
-```text
-Versión Novedades
-v0.1.0 Buscador simple con colores
-v0.2.0 Filtros, ignorar carpetas, búsqueda exacta
-v0.3.0 ✅ Caché - búsquedas instantáneas
-v0.4.0 ✅ Búsqueda semántica con TF-IDF
-v0.5.0 ✅ Búsqueda por nombre, contador, resumen
-v0.6.0 🚀 Próximamente
-v1.0.0 Estable, publicación en crates.io
-```
----
 
-📁 Extensiones soportadas
-```text
-· Rust (.rs)
-· Python (.py)
-· JavaScript/TypeScript (.js, .ts)
-· Go (.go)
-· Java (.java)
-· C/C++ (.c, .cpp, .h)
-· Y más: .toml, .json, .yaml, .md, .sh, .bash, .css, .html, .xml, .sql, .rb, .php, .swift, .kt
-```
-
----
-
-🛠️ Desarrollo
-
-```bash
-# Clonar
-git clone https://github.com/lecodev-26/semantic-search
-
-# Compilar
-cargo build
-
-# Compilar optimizado
-cargo build --release
-
-# Ejecutar tests
-cargo test
-```
+Versión Novedades Estado
+v0.1.0 Base: buscador simple con colores ✅
+v0.2.0 Filtros, ignorar carpetas, búsqueda exacta ✅
+v0.3.0 Caché - búsquedas instantáneas ✅
+v0.4.0 Búsqueda semántica con TF-IDF ✅
+v0.5.0 Búsqueda por nombre, contador de ocurrencias, resumen ✅
+v0.6.0 Indexado por extensión, filtro por tamaño, tamaño visible ✅
+v0.7.0 Próximamente... ⬜
+v0.8.0 Próximamente... ⬜
+v1.0.0 Publicación en crates.io ⬜
 
 ---
 
