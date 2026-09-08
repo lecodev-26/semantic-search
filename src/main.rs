@@ -2,7 +2,7 @@
 
 use clap::Parser;
 use colored::*;
-use semcode_search::cli::{Cli, Commands, AliasAction};
+use semcode_search::cli::{AliasAction, Cli, Commands};
 use semcode_search::core::{index_files, search_files, SearchConfigInternal};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -57,7 +57,14 @@ pub fn save_config(config: &Config) -> anyhow::Result<()> {
     Ok(())
 }
 
-type AppliedConfig = (Option<Vec<String>>, Vec<String>, bool, bool, Option<String>, Option<String>);
+type AppliedConfig = (
+    Option<Vec<String>>,
+    Vec<String>,
+    bool,
+    bool,
+    Option<String>,
+    Option<String>,
+);
 
 fn apply_config_to_search(
     ext: Option<String>,
@@ -68,7 +75,9 @@ fn apply_config_to_search(
     ignore_pattern: Option<String>,
     config: &Config,
 ) -> AppliedConfig {
-    let mut ext_vec = ext.as_ref().map(|e| e.split(',').map(|s| s.to_string()).collect());
+    let mut ext_vec = ext
+        .as_ref()
+        .map(|e| e.split(',').map(|s| s.to_string()).collect());
     let mut ignore_vec: Vec<String> = ignore.split(',').map(|s| s.to_string()).collect();
     let mut new_verbose = verbose;
     let mut new_interactive = interactive;
@@ -147,8 +156,14 @@ fn main() -> anyhow::Result<()> {
         Commands::Alias(action) => {
             let mut config = load_config()?;
             match action {
-                AliasAction::Save { name, query, params } => {
-                    config.aliases.insert(name.clone(), AliasEntry { query, params });
+                AliasAction::Save {
+                    name,
+                    query,
+                    params,
+                } => {
+                    config
+                        .aliases
+                        .insert(name.clone(), AliasEntry { query, params });
                     save_config(&config)?;
                     println!("{} Alias '{}' guardado.", "✅".green(), name);
                 }

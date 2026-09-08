@@ -1,19 +1,22 @@
 //! Módulo Core - Lógica principal del buscador
 
 // Submódulos privados
+mod engine;
 mod error;
 mod types;
-mod engine;
 
 // Re-exportar API pública
+pub use engine::SearchEngine;
 pub use error::{Result, SearchError};
 pub use types::{SearchConfig, SearchResult};
-pub use engine::SearchEngine;
 
 // ===== Funciones auxiliares y lógica principal =====
 
+use byte_unit::Byte;
 use colored::*;
+use glob::Pattern;
 use ignore::WalkBuilder;
+use rayon::prelude::*;
 use regex::Regex;
 use std::collections::HashMap;
 use std::fs;
@@ -22,9 +25,6 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Instant;
-use byte_unit::Byte;
-use glob::Pattern;
-use rayon::prelude::*;
 
 // ===== Funciones Auxiliares =====
 
@@ -264,10 +264,9 @@ pub fn index_files(
 
                     if should_include {
                         let exts = [
-                            "rs", "py", "js", "ts", "go", "java", "c", "cpp", "h",
-                            "toml", "json", "txt", "md", "sh", "bash", "yaml", "yml",
-                            "css", "html", "xml", "sql", "rb", "php", "swift", "kt",
-                            "zip",
+                            "rs", "py", "js", "ts", "go", "java", "c", "cpp", "h", "toml", "json",
+                            "txt", "md", "sh", "bash", "yaml", "yml", "css", "html", "xml", "sql",
+                            "rb", "php", "swift", "kt", "zip",
                         ];
                         if exts.contains(&ext_str) {
                             return Some(p.to_path_buf());
@@ -366,7 +365,10 @@ pub fn search_files(config: SearchConfigInternal) -> anyhow::Result<Vec<super::S
         None
     };
 
-    let ext_filter: Option<Vec<&str>> = config.ext.as_ref().map(|e| e.iter().map(|s| s.as_str()).collect());
+    let ext_filter: Option<Vec<&str>> = config
+        .ext
+        .as_ref()
+        .map(|e| e.iter().map(|s| s.as_str()).collect());
 
     if let Some(file_pattern) = &config.file {
         let found: Vec<PathBuf> = cache
@@ -653,11 +655,7 @@ pub fn search_files(config: SearchConfigInternal) -> anyhow::Result<Vec<super::S
                 "•".cyan(),
                 total_encontrados
             );
-            println!(
-                "  {} Coincidencias totales: {}",
-                "•".cyan(),
-                total_matches
-            );
+            println!("  {} Coincidencias totales: {}", "•".cyan(), total_matches);
             println!("  {} Tiempo: {:.2}s", "•".cyan(), elapsed.as_secs_f32());
         } else {
             println!(
