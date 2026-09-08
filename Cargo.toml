@@ -1,12 +1,24 @@
 [package]
-name = "semantic-search"
-version = "0.9.0"
+name = "semcode-search"
+version = "1.0.0"
 edition = "2021"
+rust-version = "1.75"
 authors = ["Manuel <lecodev-26@github.com>"]
-description = "🔍 Buscador semántico de código con TF-IDF, caché y filtros avanzados"
+description = "Fast semantic code search CLI with TF-IDF ranking, caching, and advanced filtering"
 license = "MIT"
-repository = "https://github.com/lecodev-26/semantic-search"
+repository = "https://github.com/lecodev-26/semcode-search"
 readme = "README.md"
+keywords = [
+    "semantic-search",
+    "code-search",
+    "search",
+    "cli",
+    "tf-idf"
+]
+categories = [
+    "command-line-utilities",
+    "development-tools"
+]
 
 [dependencies]
 clap = { version = "4.5", features = ["derive", "color"] }
