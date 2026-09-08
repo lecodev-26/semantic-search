@@ -9,11 +9,12 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
+use byte_unit::Byte;
 
 #[derive(Parser)]
 #[command(name = "semantic-search")]
-#[command(version = "0.5.0")]
-#[command(about = "🔍 Buscador semántico de código con TF-IDF, caché y búsqueda por nombre")]
+#[command(version = "0.6.0")]
+#[command(about = "🔍 Buscador semántico de código con TF-IDF, caché y filtros avanzados")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -29,6 +30,8 @@ enum Commands {
         ignore: String,
         #[arg(short, long)]
         force: bool,
+        #[arg(short = 'e', long, value_name = "EXT")]
+        ext: Option<String>,
     },
     /// Buscar en archivos
     Search {
@@ -67,6 +70,9 @@ enum Commands {
 
         #[arg(long, default_value_t = true)]
         summary: bool,
+
+        #[arg(long, value_name = "SIZE")]
+        max_size: Option<String>,
     },
 }
 
@@ -76,6 +82,7 @@ struct CacheEntry {
     content: String,
     modified: u64,
     words: Vec<String>,
+    size: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -113,6 +120,7 @@ impl Cache {
     }
 }
 
+// 👇 TF-IDF SIMPLE
 fn get_word_vector(text: &str) -> HashMap<String, u32> {
     let mut word_count = HashMap::new();
     for word in text.split_whitespace() {
@@ -148,12 +156,31 @@ fn cosine_similarity(vec1: &HashMap<String, u32>, vec2: &HashMap<String, u32>) -
     dot_product / (norm1.sqrt() * norm2.sqrt())
 }
 
+// 👇 CORREGIDO: parse_str + as_u64
+fn parse_size(size_str: &str) -> anyhow::Result<u64> {
+    let size = Byte::parse_str(size_str, true)
+        .map_err(|e| anyhow::anyhow!("Error parsing size: {}", e))?;
+    Ok(size.as_u64())
+}
+
+fn format_size(bytes: u64) -> String {
+    if bytes < 1024 {
+        format!("{} B", bytes)
+    } else if bytes < 1024 * 1024 {
+        format!("{:.1} KB", bytes as f64 / 1024.0)
+    } else if bytes < 1024 * 1024 * 1024 {
+        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+    } else {
+        format!("{:.1} GB", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let start_time = Instant::now();
 
     match cli.command {
-        Commands::Index { path, ignore, force } => {
+        Commands::Index { path, ignore, force, ext } => {
             let cache_path = Path::new(".semantic-index.json");
             if force && cache_path.exists() {
                 fs::remove_file(cache_path)?;
@@ -161,7 +188,11 @@ fn main() -> anyhow::Result<()> {
             }
 
             println!("{} Indexando: {}", "📁".green(), path);
+
+            let ext_filter: Option<Vec<&str>> = ext.as_ref().map(|e| e.split(',').collect());
+
             let mut count = 0;
+            let mut total_size = 0u64;
             let mut cache = Cache::new();
             let ignore_dirs: Vec<&str> = ignore.split(',').collect();
 
@@ -183,17 +214,28 @@ fn main() -> anyhow::Result<()> {
                 }
 
                 if entry.file_type().map(|ft| ft.is_file()).unwrap_or(false) {
-                    if let Some(ext) = p.extension() {
-                        let ext_str = ext.to_string_lossy().to_string();
+                    if let Some(ext_str) = p.extension().and_then(|e| e.to_str()) {
+                        let should_include = if let Some(ref exts) = ext_filter {
+                            exts.contains(&ext_str)
+                        } else {
+                            true
+                        };
+
+                        if !should_include {
+                            continue;
+                        }
+
                         let exts = [
                             "rs", "py", "js", "ts", "go", "java", "c", "cpp", "h",
                             "toml", "json", "txt", "md", "sh", "bash", "yaml", "yml",
                             "css", "html", "xml", "sql", "rb", "php", "swift", "kt",
                         ];
-                        if exts.contains(&ext_str.as_str()) {
+                        if exts.contains(&ext_str) {
                             if let Ok(content) = fs::read_to_string(p) {
-                                count += 1;
                                 let metadata = fs::metadata(p)?;
+                                let file_size = metadata.len();
+                                total_size += file_size;
+                                count += 1;
                                 let modified = metadata
                                     .modified()
                                     .map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap().as_secs())
@@ -212,6 +254,7 @@ fn main() -> anyhow::Result<()> {
                                         content,
                                         modified,
                                         words,
+                                        size: file_size,
                                     },
                                 );
                             }
@@ -224,6 +267,10 @@ fn main() -> anyhow::Result<()> {
             cache.save(cache_path)?;
 
             println!("{} Indexados {} archivos.", "✅".green(), count);
+            if let Some(ref exts) = ext_filter {
+                println!("{} Filtro por extensiones: {:?}", "📋".blue(), exts);
+            }
+            println!("{} Tamaño total: {}", "💾".blue(), format_size(total_size));
             println!("{} Caché guardada en .semantic-index.json", "💾".green());
         }
 
@@ -240,6 +287,7 @@ fn main() -> anyhow::Result<()> {
             semantic,
             file,
             summary,
+            max_size,
         } => {
             let cache_path = Path::new(".semantic-index.json");
 
@@ -257,12 +305,17 @@ fn main() -> anyhow::Result<()> {
                 return Ok(());
             };
 
+            let max_size_bytes = if let Some(size_str) = max_size {
+                Some(parse_size(&size_str)?)
+            } else {
+                None
+            };
+
             let ext_filter: Option<Vec<&str>> = ext.as_ref().map(|e| e.split(',').collect());
 
-            // 👇 CORREGIDO: Búsqueda por nombre de archivo (usando clone para evitar mover)
             if let Some(file_pattern) = file {
                 println!("{} Buscando archivos por nombre: '{}'", "📄".cyan(), file_pattern);
-                
+
                 let found: Vec<PathBuf> = cache
                     .entries
                     .keys()
@@ -310,6 +363,10 @@ fn main() -> anyhow::Result<()> {
             }
             println!("  Query: '{}'", query_str);
 
+            if let Some(max_size) = max_size_bytes {
+                println!("  {} Máximo tamaño: {}", "📏".blue(), format_size(max_size));
+            }
+
             let encontrados = Arc::new(AtomicUsize::new(0));
             let total_ocurrencias = Arc::new(AtomicUsize::new(0));
             let total_archivos = cache.entries.len();
@@ -343,6 +400,12 @@ fn main() -> anyhow::Result<()> {
                     print!("\r  Progreso: {}/{}", i + 1, total_archivos);
                 }
 
+                if let Some(max_size) = max_size_bytes {
+                    if entry.size > max_size {
+                        continue;
+                    }
+                }
+
                 let should_include = if let Some(ref exts) = ext_filter {
                     p.extension()
                         .and_then(|e| e.to_str())
@@ -366,10 +429,11 @@ fn main() -> anyhow::Result<()> {
                             total_ocurrencias.fetch_add(1, Ordering::SeqCst);
 
                             let ocurrencias = entry_vec.values().sum::<u32>();
-                            println!("\n{} [Similitud: {:.2}%] ({} palabras clave)",
+                            println!("\n{} [Similitud: {:.2}%] ({} palabras clave) [{}]",
                                 p.display().to_string().green(),
                                 similarity * 100.0,
-                                ocurrencias
+                                ocurrencias,
+                                format_size(entry.size).dimmed()
                             );
 
                             let preview: String = entry.content.lines().take(3).collect::<Vec<_>>().join("\n");
@@ -383,9 +447,10 @@ fn main() -> anyhow::Result<()> {
                             encontrados.fetch_add(1, Ordering::SeqCst);
                             total_ocurrencias.fetch_add(matches.len(), Ordering::SeqCst);
 
-                            println!("\n{} ({} coincidencias)",
+                            println!("\n{} ({} coincidencias) [{}]",
                                 p.display().to_string().green(),
-                                matches.len()
+                                matches.len(),
+                                format_size(entry.size).dimmed()
                             );
 
                             let lineas: Vec<String> = entry
