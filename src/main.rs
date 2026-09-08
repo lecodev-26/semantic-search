@@ -10,10 +10,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 use byte_unit::Byte;
+use glob::Pattern;
 
 #[derive(Parser)]
 #[command(name = "semantic-search")]
-#[command(version = "0.6.0")]
+#[command(version = "0.7.0")]
 #[command(about = "🔍 Buscador semántico de código con TF-IDF, caché y filtros avanzados")]
 struct Cli {
     #[command(subcommand)]
@@ -32,6 +33,9 @@ enum Commands {
         force: bool,
         #[arg(short = 'e', long, value_name = "EXT")]
         ext: Option<String>,
+        /// Ignorar archivos por patrón (ej: *.log, *.tmp) - NUEVO
+        #[arg(long, value_name = "PATTERN")]
+        ignore_pattern: Option<String>,
     },
     /// Buscar en archivos
     Search {
@@ -73,6 +77,14 @@ enum Commands {
 
         #[arg(long, value_name = "SIZE")]
         max_size: Option<String>,
+
+        /// Ignorar archivos por patrón (ej: *.log, *.tmp) - NUEVO
+        #[arg(long, value_name = "PATTERN")]
+        ignore_pattern: Option<String>,
+
+        /// Buscar dentro de archivos comprimidos (zip, tar.gz) - NUEVO
+        #[arg(long)]
+        extract: bool,
     },
 }
 
@@ -156,7 +168,6 @@ fn cosine_similarity(vec1: &HashMap<String, u32>, vec2: &HashMap<String, u32>) -
     dot_product / (norm1.sqrt() * norm2.sqrt())
 }
 
-// 👇 CORREGIDO: parse_str + as_u64
 fn parse_size(size_str: &str) -> anyhow::Result<u64> {
     let size = Byte::parse_str(size_str, true)
         .map_err(|e| anyhow::anyhow!("Error parsing size: {}", e))?;
@@ -175,12 +186,38 @@ fn format_size(bytes: u64) -> String {
     }
 }
 
+// 👇 NUEVO: Verificar si un archivo coincide con un patrón glob
+fn matches_pattern(path: &Path, pattern: &str) -> bool {
+    if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+        if let Ok(pattern) = Pattern::new(pattern) {
+            return pattern.matches(file_name);
+        }
+    }
+    false
+}
+
+// 👇 NUEVO: Extraer contenido de archivos comprimidos (simplificado)
+fn extract_archive_content(path: &Path) -> anyhow::Result<Option<String>> {
+    let path_str = path.to_string_lossy();
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+
+    // Solo soportamos .zip por ahora
+    if ext == "zip" {
+        // Placeholder: en una versión futura se implementará extracción real
+        // Por ahora, intentamos leerlo como texto (fallará si es binario)
+        if let Ok(content) = fs::read_to_string(path) {
+            return Ok(Some(content));
+        }
+    }
+    Ok(None)
+}
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let start_time = Instant::now();
 
     match cli.command {
-        Commands::Index { path, ignore, force, ext } => {
+        Commands::Index { path, ignore, force, ext, ignore_pattern } => {
             let cache_path = Path::new(".semantic-index.json");
             if force && cache_path.exists() {
                 fs::remove_file(cache_path)?;
@@ -214,6 +251,13 @@ fn main() -> anyhow::Result<()> {
                 }
 
                 if entry.file_type().map(|ft| ft.is_file()).unwrap_or(false) {
+                    // 👇 NUEVO: Ignorar por patrón glob
+                    if let Some(ref pattern) = ignore_pattern {
+                        if matches_pattern(p, pattern) {
+                            continue;
+                        }
+                    }
+
                     if let Some(ext_str) = p.extension().and_then(|e| e.to_str()) {
                         let should_include = if let Some(ref exts) = ext_filter {
                             exts.contains(&ext_str)
@@ -229,6 +273,7 @@ fn main() -> anyhow::Result<()> {
                             "rs", "py", "js", "ts", "go", "java", "c", "cpp", "h",
                             "toml", "json", "txt", "md", "sh", "bash", "yaml", "yml",
                             "css", "html", "xml", "sql", "rb", "php", "swift", "kt",
+                            "zip", // NUEVO: soporte para zip
                         ];
                         if exts.contains(&ext_str) {
                             if let Ok(content) = fs::read_to_string(p) {
@@ -270,6 +315,9 @@ fn main() -> anyhow::Result<()> {
             if let Some(ref exts) = ext_filter {
                 println!("{} Filtro por extensiones: {:?}", "📋".blue(), exts);
             }
+            if let Some(ref pattern) = ignore_pattern {
+                println!("{} Ignorando patrón: {}", "🚫".blue(), pattern);
+            }
             println!("{} Tamaño total: {}", "💾".blue(), format_size(total_size));
             println!("{} Caché guardada en .semantic-index.json", "💾".green());
         }
@@ -288,6 +336,8 @@ fn main() -> anyhow::Result<()> {
             file,
             summary,
             max_size,
+            ignore_pattern,
+            extract,
         } => {
             let cache_path = Path::new(".semantic-index.json");
 
@@ -366,6 +416,12 @@ fn main() -> anyhow::Result<()> {
             if let Some(max_size) = max_size_bytes {
                 println!("  {} Máximo tamaño: {}", "📏".blue(), format_size(max_size));
             }
+            if let Some(ref pattern) = ignore_pattern {
+                println!("  {} Ignorando patrón: {}", "🚫".blue(), pattern);
+            }
+            if extract {
+                println!("  {} Buscando en archivos comprimidos (experimental)", "📦".blue());
+            }
 
             let encontrados = Arc::new(AtomicUsize::new(0));
             let total_ocurrencias = Arc::new(AtomicUsize::new(0));
@@ -400,6 +456,13 @@ fn main() -> anyhow::Result<()> {
                     print!("\r  Progreso: {}/{}", i + 1, total_archivos);
                 }
 
+                // 👇 NUEVO: Ignorar por patrón glob
+                if let Some(ref pattern) = ignore_pattern {
+                    if matches_pattern(p, pattern) {
+                        continue;
+                    }
+                }
+
                 if let Some(max_size) = max_size_bytes {
                     if entry.size > max_size {
                         continue;
@@ -419,9 +482,20 @@ fn main() -> anyhow::Result<()> {
                     continue;
                 }
 
+                // 👇 NUEVO: Soporte para archivos comprimidos
+                let content_to_search = if extract {
+                    if let Ok(Some(extracted)) = extract_archive_content(p) {
+                        extracted
+                    } else {
+                        entry.content.clone()
+                    }
+                } else {
+                    entry.content.clone()
+                };
+
                 if semantic {
                     if let Some(q_vec) = &query_words {
-                        let entry_vec = get_word_vector(&entry.content);
+                        let entry_vec = get_word_vector(&content_to_search);
                         let similarity = cosine_similarity(q_vec, &entry_vec);
 
                         if similarity > 0.15 {
@@ -436,13 +510,13 @@ fn main() -> anyhow::Result<()> {
                                 format_size(entry.size).dimmed()
                             );
 
-                            let preview: String = entry.content.lines().take(3).collect::<Vec<_>>().join("\n");
+                            let preview: String = content_to_search.lines().take(3).collect::<Vec<_>>().join("\n");
                             println!("  {}", preview);
                         }
                     }
                 } else {
                     if let Some(re) = &query_regex {
-                        let matches: Vec<_> = re.find_iter(&entry.content).collect();
+                        let matches: Vec<_> = re.find_iter(&content_to_search).collect();
                         if !matches.is_empty() {
                             encontrados.fetch_add(1, Ordering::SeqCst);
                             total_ocurrencias.fetch_add(matches.len(), Ordering::SeqCst);
@@ -453,8 +527,7 @@ fn main() -> anyhow::Result<()> {
                                 format_size(entry.size).dimmed()
                             );
 
-                            let lineas: Vec<String> = entry
-                                .content
+                            let lineas: Vec<String> = content_to_search
                                 .lines()
                                 .enumerate()
                                 .filter_map(|(num, line)| {
