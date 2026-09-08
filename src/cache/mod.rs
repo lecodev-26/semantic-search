@@ -51,3 +51,9 @@ impl Cache {
         false
     }
 }
+
+impl Default for Cache {
+    fn default() -> Self {
+        Self::new()
+    }
+}

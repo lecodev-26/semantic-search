@@ -1,11 +1,11 @@
 //! Módulo CLI - Comandos y argumentos
 
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "semantic-search")]
-#[command(version = "0.9.0")]
-#[command(about = "🔍 Buscador semántico de código con TF-IDF, caché y filtros avanzados")]
+#[command(name = "semcode-search")]
+#[command(version = "1.0.0")]
+#[command(about = "🔍 Fast semantic code search with TF-IDF, caching, and advanced filtering")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
@@ -13,40 +13,142 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum Commands {
-    Init { force: bool },
-    Alias { action: AliasAction },
-    Index {
-        path: String,
-        ignore: String,
+    /// Inicializar configuración
+    Init {
+        /// Forzar sobreescritura
+        #[arg(short, long)]
         force: bool,
+    },
+
+    /// Gestionar alias para búsquedas
+    #[command(subcommand)]
+    Alias(AliasAction),
+
+    /// Indexar archivos y guardar caché
+    Index {
+        /// Ruta a indexar
+        #[arg(short, long, default_value = ".")]
+        path: String,
+
+        /// Carpetas a ignorar (comma-separated)
+        #[arg(short, long, default_value = ".git,target,node_modules,dist,build")]
+        ignore: String,
+
+        /// Forzar re-indexado
+        #[arg(short, long)]
+        force: bool,
+
+        /// Filtrar por extensiones (comma-separated)
+        #[arg(short = 'e', long)]
         ext: Option<String>,
+
+        /// Ignorar archivos por patrón glob
+        #[arg(long)]
         ignore_pattern: Option<String>,
     },
+
+    /// Buscar en archivos
     Search {
+        /// Término de búsqueda
+        #[arg(short, long)]
         query: Option<String>,
+
+        /// Ruta a buscar
+        #[arg(short, long, default_value = ".")]
         path: String,
+
+        /// Filtrar por extensiones (comma-separated)
+        #[arg(short = 'e', long)]
         ext: Option<String>,
+
+        /// Carpetas a ignorar (comma-separated)
+        #[arg(
+            short = 'i',
+            long,
+            default_value = ".git,target,node_modules,dist,build"
+        )]
         ignore: String,
+
+        /// Búsqueda exacta (palabra completa)
+        #[arg(long)]
         exact: bool,
+
+        /// Ignorar mayúsculas/minúsculas
+        #[arg(long)]
         ignore_case: bool,
+
+        /// Modo verboso (muestra progreso)
+        #[arg(short, long)]
         verbose: bool,
+
+        /// Ignorar caché
+        #[arg(long)]
         no_cache: bool,
+
+        /// Actualizar caché antes de buscar
+        #[arg(long)]
         update: bool,
+
+        /// Búsqueda semántica (TF-IDF)
+        #[arg(long)]
         semantic: bool,
+
+        /// Buscar por nombre de archivo
+        #[arg(short = 'f', long)]
         file: Option<String>,
+
+        /// Mostrar resumen al final
+        #[arg(long, default_value_t = true)]
         summary: bool,
+
+        /// Tamaño máximo de archivo (ej: 1MB, 500KB)
+        #[arg(long)]
         max_size: Option<String>,
+
+        /// Ignorar archivos por patrón glob
+        #[arg(long)]
         ignore_pattern: Option<String>,
+
+        /// Buscar en archivos comprimidos (experimental)
+        #[arg(long)]
         extract: bool,
+
+        /// Modo interactivo para navegar resultados
+        #[arg(long)]
         interactive: bool,
+
+        /// Usar un alias guardado
+        #[arg(long)]
         alias: Option<String>,
     },
 }
 
-#[derive(ValueEnum, Debug, Clone)]
+#[derive(Subcommand, Debug, Clone)]
 pub enum AliasAction {
-    Save,
+    /// Guardar una búsqueda como alias
+    Save {
+        /// Nombre del alias
+        name: String,
+
+        /// Query de búsqueda
+        query: String,
+
+        /// Parámetros adicionales (ej: --ext rs --path src)
+        params: Vec<String>,
+    },
+
+    /// Listar todos los alias guardados
     List,
-    Remove,
-    Run,
+
+    /// Eliminar un alias
+    Remove {
+        /// Nombre del alias
+        name: String,
+    },
+
+    /// Ejecutar un alias
+    Run {
+        /// Nombre del alias
+        name: String,
+    },
 }
