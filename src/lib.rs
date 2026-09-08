@@ -1,7 +1,15 @@
-//! # semantic-search
-//! 
-//! Buscador de código por significado con TF-IDF, caché y filtros avanzados.
+//! # semcode-search
+//!
+//! Biblioteca para búsqueda semántica de código con TF-IDF, caché y filtros avanzados.
 
+pub mod cache;
 pub mod cli;
 pub mod core;
-pub mod cache;
+
+// Re-exportar API pública
+pub use core::index_files;
+pub use core::search_files;
+pub use core::SearchConfigInternal;
+pub use core::SearchEngine;
+pub use core::SearchError;
+pub use core::SearchResult;

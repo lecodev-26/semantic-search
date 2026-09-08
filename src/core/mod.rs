@@ -1,6 +1,17 @@
 //! Módulo Core - Lógica principal del buscador
 
-use crate::cache::Cache;
+// Submódulos privados
+mod error;
+mod types;
+mod engine;
+
+// Re-exportar API pública
+pub use error::{Result, SearchError};
+pub use types::{SearchConfig, SearchResult};
+pub use engine::SearchEngine;
+
+// ===== Funciones auxiliares y lógica principal =====
+
 use colored::*;
 use ignore::WalkBuilder;
 use regex::Regex;
@@ -89,10 +100,10 @@ pub fn extract_archive_content(path: &Path) -> anyhow::Result<Option<String>> {
     Ok(None)
 }
 
-// ===== Estructura SearchResult =====
+// ===== Estructura interna =====
 
 #[derive(Debug, Clone)]
-pub struct SearchResult {
+pub struct InternalSearchResult {
     pub path: PathBuf,
     pub content: String,
     pub matches: usize,
@@ -104,7 +115,7 @@ pub struct SearchResult {
 
 // ===== Modo Interactivo =====
 
-pub fn interactive_mode(results: &[SearchResult]) -> anyhow::Result<()> {
+pub fn interactive_mode(results: &[InternalSearchResult]) -> anyhow::Result<()> {
     use std::io::{self, Write};
 
     if results.is_empty() {
@@ -117,8 +128,12 @@ pub fn interactive_mode(results: &[SearchResult]) -> anyhow::Result<()> {
 
     loop {
         clear_screen();
-        println!("{} {} de {} (Presiona Enter para avanzar, q para salir)", 
-            "📖".cyan(), idx + 1, total);
+        println!(
+            "{} {} de {} (Presiona Enter para avanzar, q para salir)",
+            "📖".cyan(),
+            idx + 1,
+            total
+        );
 
         let result = &results[idx];
         println!("\n{}", result.path.display().to_string().green().bold());
@@ -134,7 +149,8 @@ pub fn interactive_mode(results: &[SearchResult]) -> anyhow::Result<()> {
             let display_line = if let Some(ref re) = result.highlight_regex {
                 re.replace_all(line, |caps: &regex::Captures| {
                     caps[0].to_string().red().to_string()
-                }).to_string()
+                })
+                .to_string()
             } else {
                 line.to_string()
             };
@@ -155,7 +171,10 @@ pub fn interactive_mode(results: &[SearchResult]) -> anyhow::Result<()> {
 
         idx = (idx + 1) % total;
         if idx == 0 {
-            println!("\n{} Has llegado al final. Volviendo al principio...", "🔄".yellow());
+            println!(
+                "\n{} Has llegado al final. Volviendo al principio...",
+                "🔄".yellow()
+            );
             std::thread::sleep(std::time::Duration::from_millis(500));
         }
     }
@@ -168,6 +187,26 @@ fn clear_screen() {
     std::io::stdout().flush().unwrap();
 }
 
+// ===== Configuración interna para búsqueda =====
+
+pub struct SearchConfigInternal {
+    pub query: String,
+    pub path: String,
+    pub ext: Option<Vec<String>>,
+    pub ignore: Vec<String>,
+    pub exact: bool,
+    pub ignore_case: bool,
+    pub verbose: bool,
+    pub no_cache: bool,
+    pub semantic: bool,
+    pub file: Option<String>,
+    pub summary: bool,
+    pub max_size: Option<String>,
+    pub ignore_pattern: Option<String>,
+    pub extract: bool,
+    pub interactive: bool,
+}
+
 // ===== Indexado =====
 
 pub fn index_files(
@@ -177,6 +216,8 @@ pub fn index_files(
     ignore_pattern: Option<&str>,
     force: bool,
 ) -> anyhow::Result<()> {
+    use crate::cache::Cache;
+
     let cache_path = Path::new(".semantic-index.json");
     if force && cache_path.exists() {
         fs::remove_file(cache_path)?;
@@ -295,25 +336,9 @@ pub fn index_files(
 
 // ===== Búsqueda =====
 
-pub struct SearchConfig {
-    pub query: String,
-    pub path: String,
-    pub ext: Option<Vec<String>>,
-    pub ignore: Vec<String>,
-    pub exact: bool,
-    pub ignore_case: bool,
-    pub verbose: bool,
-    pub no_cache: bool,
-    pub semantic: bool,
-    pub file: Option<String>,
-    pub summary: bool,
-    pub max_size: Option<String>,
-    pub ignore_pattern: Option<String>,
-    pub extract: bool,
-    pub interactive: bool,
-}
+pub fn search_files(config: SearchConfigInternal) -> anyhow::Result<Vec<super::SearchResult>> {
+    use crate::cache::Cache;
 
-pub fn search_files(config: SearchConfig) -> anyhow::Result<()> {
     let start_time = Instant::now();
 
     let cache_path = Path::new(".semantic-index.json");
@@ -324,12 +349,15 @@ pub fn search_files(config: SearchConfig) -> anyhow::Result<()> {
             Ok(c) => c,
             Err(_) => {
                 println!("{} Caché corrupta. Ejecute 'index' primero.", "⚠️".yellow());
-                return Ok(());
+                return Ok(Vec::new());
             }
         }
     } else {
-        println!("{} No se encontró caché. Ejecute 'index' primero.", "⚠️".yellow());
-        return Ok(());
+        println!(
+            "{} No se encontró caché. Ejecute 'index' primero.",
+            "⚠️".yellow()
+        );
+        return Ok(Vec::new());
     };
 
     let max_size_bytes = if let Some(size_str) = &config.max_size {
@@ -341,8 +369,6 @@ pub fn search_files(config: SearchConfig) -> anyhow::Result<()> {
     let ext_filter: Option<Vec<&str>> = config.ext.as_ref().map(|e| e.iter().map(|s| s.as_str()).collect());
 
     if let Some(file_pattern) = &config.file {
-        println!("{} Buscando archivos por nombre: '{}'", "📄".cyan(), file_pattern);
-
         let found: Vec<PathBuf> = cache
             .entries
             .keys()
@@ -361,16 +387,22 @@ pub fn search_files(config: SearchConfig) -> anyhow::Result<()> {
             .cloned()
             .collect();
 
-        if found.is_empty() {
-            println!("{} No se encontraron archivos con ese nombre.", "⚠️".yellow());
-        } else {
-            let total = found.len();
-            for p in &found {
-                println!("{}", p.display().to_string().green());
+        let mut results = Vec::new();
+        for p in found {
+            if let Some(entry) = cache.entries.get(&p) {
+                results.push(super::SearchResult {
+                    path: p,
+                    content: entry.content.clone(),
+                    matches: 0,
+                    size: entry.size,
+                    line_start: None,
+                    line_end: None,
+                    score: None,
+                    keywords: Vec::new(),
+                });
             }
-            println!("\n{} Encontrados {} archivos.", "✅".green(), total);
         }
-        return Ok(());
+        return Ok(results);
     }
 
     if config.semantic {
@@ -387,7 +419,10 @@ pub fn search_files(config: SearchConfig) -> anyhow::Result<()> {
         println!("  {} Ignorando patrón: {}", "🚫".blue(), pattern);
     }
     if config.extract {
-        println!("  {} Buscando en archivos comprimidos (experimental)", "📦".blue());
+        println!(
+            "  {} Buscando en archivos comprimidos (experimental)",
+            "📦".blue()
+        );
     }
     if config.interactive {
         println!("  {} Modo interactivo activado", "🎮".blue());
@@ -396,7 +431,7 @@ pub fn search_files(config: SearchConfig) -> anyhow::Result<()> {
     let encontrados = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let total_ocurrencias = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let total_archivos = cache.entries.len();
-    let mut search_results = Vec::new();
+    let mut search_results: Vec<super::SearchResult> = Vec::new();
 
     if config.verbose {
         println!("{} Revisando {} archivos...", "📄".blue(), total_archivos);
@@ -472,25 +507,30 @@ pub fn search_files(config: SearchConfig) -> anyhow::Result<()> {
                     total_ocurrencias.fetch_add(1, Ordering::SeqCst);
 
                     let ocurrencias = entry_vec.values().sum::<u32>();
-                    let result = SearchResult {
+                    search_results.push(super::SearchResult {
                         path: p.to_path_buf(),
                         content: content_to_search.clone(),
                         matches: ocurrencias as usize,
                         size: entry.size,
                         line_start: None,
                         line_end: None,
-                        highlight_regex: None,
-                    };
-                    search_results.push(result);
+                        score: Some(similarity),
+                        keywords: entry_vec.keys().cloned().collect(), // 👈 CORREGIDO
+                    });
 
                     if !config.interactive {
-                        println!("\n{} [Similitud: {:.2}%] ({} palabras clave) [{}]",
+                        println!(
+                            "\n{} [Similitud: {:.2}%] ({} palabras clave) [{}]",
                             p.display().to_string().green(),
                             similarity * 100.0,
                             ocurrencias,
                             format_size(entry.size).dimmed()
                         );
-                        let preview: String = content_to_search.lines().take(3).collect::<Vec<_>>().join("\n");
+                        let preview: String = content_to_search
+                            .lines()
+                            .take(3)
+                            .collect::<Vec<_>>()
+                            .join("\n");
                         println!("  {}", preview);
                     }
                 }
@@ -504,29 +544,31 @@ pub fn search_files(config: SearchConfig) -> anyhow::Result<()> {
 
                     let first_match = matches.first().map(|m| m.start());
                     let last_match = matches.last().map(|m| m.end());
-                    let (line_start, line_end) = if let (Some(start), Some(end)) = (first_match, last_match) {
-                        let content_before = &content_to_search[..start];
-                        let line_start = content_before.lines().count();
-                        let content_until = &content_to_search[..end];
-                        let line_end = content_until.lines().count();
-                        (Some(line_start), Some(line_end))
-                    } else {
-                        (None, None)
-                    };
+                    let (line_start, line_end) =
+                        if let (Some(start), Some(end)) = (first_match, last_match) {
+                            let content_before = &content_to_search[..start];
+                            let line_start = content_before.lines().count();
+                            let content_until = &content_to_search[..end];
+                            let line_end = content_until.lines().count();
+                            (Some(line_start), Some(line_end))
+                        } else {
+                            (None, None)
+                        };
 
-                    let result = SearchResult {
+                    search_results.push(super::SearchResult {
                         path: p.to_path_buf(),
                         content: content_to_search.clone(),
                         matches: matches.len(),
                         size: entry.size,
                         line_start,
                         line_end,
-                        highlight_regex: query_regex.clone(),
-                    };
-                    search_results.push(result);
+                        score: None,
+                        keywords: Vec::new(),
+                    });
 
                     if !config.interactive {
-                        println!("\n{} ({} coincidencias) [{}]",
+                        println!(
+                            "\n{} ({} coincidencias) [{}]",
                             p.display().to_string().green(),
                             matches.len(),
                             format_size(entry.size).dimmed()
@@ -539,15 +581,27 @@ pub fn search_files(config: SearchConfig) -> anyhow::Result<()> {
                                 if re.is_match(line) {
                                     let line_num = format!("{}:", num + 1).yellow();
                                     let highlighted = if config.ignore_case {
-                                        let re_ignore = Regex::new(&format!(r"(?i){}", regex::escape(&config.query))).unwrap();
-                                        re_ignore.replace_all(line, |caps: &regex::Captures| {
-                                            caps[0].to_string().red().to_string()
-                                        }).to_string()
+                                        let re_ignore = Regex::new(&format!(
+                                            r"(?i){}",
+                                            regex::escape(&config.query)
+                                        ))
+                                        .unwrap();
+                                        re_ignore
+                                            .replace_all(line, |caps: &regex::Captures| {
+                                                caps[0].to_string().red().to_string()
+                                            })
+                                            .to_string()
                                     } else if config.exact {
-                                        let re_exact = Regex::new(&format!(r"\b{}\b", regex::escape(&config.query))).unwrap();
-                                        re_exact.replace_all(line, |caps: &regex::Captures| {
-                                            caps[0].to_string().red().to_string()
-                                        }).to_string()
+                                        let re_exact = Regex::new(&format!(
+                                            r"\b{}\b",
+                                            regex::escape(&config.query)
+                                        ))
+                                        .unwrap();
+                                        re_exact
+                                            .replace_all(line, |caps: &regex::Captures| {
+                                                caps[0].to_string().red().to_string()
+                                            })
+                                            .to_string()
                                     } else {
                                         line.replace(&config.query, &config.query.red().to_string())
                                     };
@@ -576,14 +630,34 @@ pub fn search_files(config: SearchConfig) -> anyhow::Result<()> {
     let elapsed = start_time.elapsed();
 
     if config.interactive && !search_results.is_empty() {
-        interactive_mode(&search_results)?;
+        let internal_results: Vec<InternalSearchResult> = search_results
+            .iter()
+            .map(|r| InternalSearchResult {
+                path: r.path.clone(),
+                content: r.content.clone(),
+                matches: r.matches,
+                size: r.size,
+                line_start: r.line_start,
+                line_end: r.line_end,
+                highlight_regex: query_regex.clone(),
+            })
+            .collect();
+        interactive_mode(&internal_results)?;
     } else if !config.interactive && total_encontrados == 0 {
         println!("{} No se encontraron coincidencias.", "⚠️".yellow());
     } else if !config.interactive {
         if config.summary {
             println!("\n{} {}", "📊".blue(), "Resumen:".bold());
-            println!("  {} Archivos encontrados: {}", "•".cyan(), total_encontrados);
-            println!("  {} Coincidencias totales: {}", "•".cyan(), total_matches);
+            println!(
+                "  {} Archivos encontrados: {}",
+                "•".cyan(),
+                total_encontrados
+            );
+            println!(
+                "  {} Coincidencias totales: {}",
+                "•".cyan(),
+                total_matches
+            );
             println!("  {} Tiempo: {:.2}s", "•".cyan(), elapsed.as_secs_f32());
         } else {
             println!(
@@ -594,5 +668,5 @@ pub fn search_files(config: SearchConfig) -> anyhow::Result<()> {
         }
     }
 
-    Ok(())
+    Ok(search_results)
 }
