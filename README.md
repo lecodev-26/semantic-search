@@ -1,106 +1,179 @@
-# 🔍 semantic-search
+# 🔍 semcode-search
 
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-blue.svg)](https://www.rust-lang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-0.9.0-brightgreen.svg)](https://github.com/lecodev-26/semantic-search/releases)
+[![Version](https://img.shields.io/badge/version-1.0.0-brightgreen.svg)](https://github.com/lecodev-26/semcode-search/releases)
 [![Termux](https://img.shields.io/badge/Termux-compatible-brightgreen.svg)](https://termux.com)
 
-> **Buscador de código por SIGNIFICADO con TF-IDF, caché y filtros avanzados.**
+> **Fast semantic code search CLI with TF-IDF ranking, caching, and advanced filtering.**
 
 ---
 
-## ✨ Características
+## ✨ Features
 
-- 🧠 **Búsqueda semántica con TF-IDF** (por significado, no por texto exacto)
-- 📄 **Búsqueda por nombre de archivo** (`--file "main.rs"`)
-- 🔢 **Contador de ocurrencias** (muestra cuántas coincidencias hay por archivo)
-- 📊 **Resumen de resultados** (archivos, coincidencias totales y tiempo)
-- 💾 **Caché inteligente** (búsquedas instantáneas después del primer indexado)
-- 📁 **Indexado por extensión** (`--ext rs,md,toml` para indexar solo esos)
-- 📏 **Filtro por tamaño** (`--max-size 100KB` para ignorar archivos grandes)
-- 🔍 **Búsqueda por texto** con resaltado en color y números de línea
-- 📱 **Compatible con Termux** (Android) y 100% local (sin internet)
+- 🔍 **Text search** with color highlighting
+- 🧠 **Semantic search** using TF-IDF ranking
+- 💾 **Intelligent cache** for instant searches
+- 📁 **Advanced filtering** by extension, size, and glob patterns
+- 📄 **Filename search**
+- ⚙️ **Global configuration**
+- 🏷️ **Search aliases** (save, list, remove, run)
+- 🎮 **Interactive mode** to navigate results
+- ⚡ **Parallel indexing** with rayon
+- 📱 **Termux compatible** (Android)
+- 📚 **Public API** for use as a library
 
 ---
 
-## 🚀 Instalación
+## 🚀 Installation
 
 ```bash
-git clone https://github.com/lecodev-26/semantic-search
-cd semantic-search
+# From crates.io (soon)
+cargo install semcode-search
+
+# From GitHub
+git clone https://github.com/lecodev-26/semcode-search
+cd semcode-search
 cargo build --release
-sudo cp target/release/semantic-search /usr/local/bin/
+sudo cp target/release/semcode-search /usr/local/bin/
 ```
 
 ---
 
-📖 Uso
+📖 Usage
 
-1. Indexar el proyecto (necesario para búsquedas rápidas)
+Basic commands
 
 ```bash
-# Indexar todo
-semantic-search index --path .
+# Index a project
+semcode-search index --path .
 
-# Indexar solo ciertas extensiones (ej: Rust y Markdown)
-semantic-search index --path . --ext rs,md
+# Search by text
+semcode-search search --query "fn main" --path .
+
+# Search semantically (TF-IDF)
+semcode-search search --query "authentication middleware" --path . --semantic
+
+# Search by filename
+semcode-search search --file "main.rs" --path .
+
+# Search with verbose output
+semcode-search search --query "error" --path . --verbose
 ```
 
-2. Buscar por significado (semántica)
+Alias management
 
 ```bash
-semantic-search search --query "función principal" --path . --semantic
+# Save a search alias
+semcode-search alias save find-main "main" -- --ext rs --path .
+
+# List all aliases
+semcode-search alias list
+
+# Run an alias
+semcode-search alias run find-main
+
+# Remove an alias
+semcode-search alias remove find-main
 ```
 
-3. Buscar por texto (grep mejorado)
+Configuration
 
 ```bash
-# Búsqueda normal
-semantic-search search --query "fn main" --path .
+# Initialize configuration
+semcode-search init
 
-# Con filtro de tamaño (ignora archivos > 100KB)
-semantic-search search --query "fn" --path . --max-size 100KB
-
-# Búsqueda exacta
-semantic-search search --query "main" --path . --exact
+# Configuration file is saved at:
+# ~/.config/semcode-search/config.toml (Linux)
+# ~/Library/Application Support/semcode-search/config.toml (macOS)
 ```
 
-4. Buscar por nombre de archivo
+Interactive mode
 
 ```bash
-semantic-search search --file "main.rs" --path .
-```
-
-5. Modo verbose (con progreso)
-
-```bash
-semantic-search search --query "fn" --path . --verbose
+semcode-search search --query "fn" --path . --interactive
 ```
 
 ---
 
-🗺️ Hoja de ruta
-```maeckdown
-Versión Novedades Estado
-v0.1.0 Base: buscador simple con colores ✅
-v0.2.0 Filtros, ignorar carpetas, búsqueda exacta ✅
-v0.3.0 Caché - búsquedas instantáneas ✅
-v0.4.0 Búsqueda semántica con TF-IDF ✅
-v0.5.0 Búsqueda por nombre, contador de ocurrencias, resumen ✅
-v0.6.0 Indexado por extensión, filtro por tamaño, tamaño visible ✅
-v0.7.0 Ignorar por patrón, búsqueda en comprimidos  ✅
-v0.8.0 Configuración global, alias y modo interactivo ✅
-v0.9.0 Refactorización completa y estructura profesional ✅
-v1.0.0 Publicación en crates.io ⬜
+🏗️ Architecture
+
 ```
+┌─────────────────────────────────────────────────────┐
+│                    CLI (clap)                       │
+├─────────────────────────────────────────────────────┤
+│  • Commands: init, alias, index, search            │
+│  • Subcommands: save, list, remove, run            │
+└─────────────────────┬───────────────────────────────┘
+                      │
+┌─────────────────────▼───────────────────────────────┐
+│                 Core Library                        │
+├─────────────────────────────────────────────────────┤
+│  • SearchEngine (public API)                       │
+│  • TF-IDF ranking                                  │
+│  • Parallel indexing (rayon)                       │
+│  • Cache management                                │
+└─────────────────────────────────────────────────────┘
+```
+
 ---
 
-📄 Licencia
+🗺️ Roadmap
+
+Version Features Status
+v0.1.0 Basic search with colors ✅
+v0.2.0 Filters, ignore directories, exact search ✅
+v0.3.0 Cache - instant searches ✅
+v0.4.0 Semantic search with TF-IDF ✅
+v0.5.0 Filename search, occurrence counter, summary ✅
+v0.6.0 Extension indexing, size filtering ✅
+v0.7.0 Glob pattern ignore, compressed file search ✅
+v0.8.0 Global config, aliases, interactive mode ✅
+v0.9.0 Refactoring, parallel indexing ✅
+v1.0.0 ✅ Stable release with public API ✅
+
+---
+
+📁 Supported extensions
+
+· Rust (.rs)
+· Python (.py)
+· JavaScript/TypeScript (.js, .ts)
+· Go (.go)
+· Java (.java)
+· C/C++ (.c, .cpp, .h)
+· And more: .toml, .json, .yaml, .md, .sh, .bash, .css, .html, .xml, .sql, .rb, .php, .swift, .kt
+
+---
+
+🛠️ Development
+
+```bash
+# Clone
+git clone https://github.com/lecodev-26/semcode-search
+cd semcode-search
+
+# Build
+cargo build
+
+# Build optimized
+cargo build --release
+
+# Run tests
+cargo test
+
+# Run benchmarks
+cargo bench
+```
+
+---
+
+📄 License
 
 MIT
 
 ---
 
-👤 Autor
+👤 Author
 
 Manuel (@lecodev-26)
