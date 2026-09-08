@@ -2,7 +2,7 @@
 
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-blue.svg)](https://www.rust-lang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-0.6.0-brightgreen.svg)](https://github.com/lecodev-26/semantic-search/releases)
+[![Version](https://img.shields.io/badge/version-0.7.0-brightgreen.svg)](https://github.com/lecodev-26/semantic-search/releases)
 [![Termux](https://img.shields.io/badge/Termux-compatible-brightgreen.svg)](https://termux.com)
 
 > **Buscador de código por SIGNIFICADO con TF-IDF, caché y filtros avanzados.**
@@ -88,7 +88,7 @@ v0.3.0 Caché - búsquedas instantáneas ✅
 v0.4.0 Búsqueda semántica con TF-IDF ✅
 v0.5.0 Búsqueda por nombre, contador de ocurrencias, resumen ✅
 v0.6.0 Indexado por extensión, filtro por tamaño, tamaño visible ✅
-v0.7.0 Próximamente... ⬜
+v0.7.0 Ignorar por patrón, búsqueda en comprimidos | ✅ |
 v0.8.0 Próximamente... ⬜
 v1.0.0 Publicación en crates.io ⬜
 ```
