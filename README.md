@@ -9,6 +9,22 @@
 
 ---
 
+## 📦 Disponible en crates.io
+
+El crate está publicado oficialmente en [crates.io](https://crates.io/crates/semcode-search).
+
+```bash
+# Instalación directa desde crates.io
+cargo install semcode-search
+```
+
+Una vez instalado, el comando semcode-search estará disponible en tu sistema:
+
+```bash
+semcode-search --version
+semcode-search --help
+```
+
 ## ✨ Features
 
 - 🔍 **Text search** with color highlighting
